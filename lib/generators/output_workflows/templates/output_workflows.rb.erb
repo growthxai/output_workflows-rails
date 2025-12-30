@@ -1,0 +1,22 @@
+# frozen_string_literal: true
+
+OutputWorkflows.configure do |config|
+  # API Configuration
+  # These can also be set via environment variables:
+  # - OUTPUT_API_URL (or FLOW_API_BASE_URL for legacy compatibility)
+  # - OUTPUT_API_KEY (or FLOW_API_KEY for legacy compatibility)
+  # - OUTPUT_WEBHOOK_SECRET (or FLOW_WEBHOOK_SECRET for legacy compatibility)
+
+  # config.api_url = ENV["OUTPUT_API_URL"]
+  # config.api_key = ENV["OUTPUT_API_KEY"]
+  # config.webhook_secret = ENV["OUTPUT_WEBHOOK_SECRET"]
+
+  # Polling Configuration
+  # config.default_timeout = 300      # 5 minutes
+  # config.default_poll_interval = 5  # 5 seconds
+
+  # Rails Integration
+  # config.job_queue = :default
+  # config.table_name = "output_workflow_executions"
+  # config.max_progress_entries = 100
+end

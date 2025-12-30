@@ -1,0 +1,33 @@
+# frozen_string_literal: true
+
+class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+  def change
+    create_table :output_workflow_executions, id: :uuid do |t|
+      # Polymorphic association (optional)
+      t.references :executable, polymorphic: true, type: :uuid
+
+      # Workflow identifiers
+      t.string :workflow_id, null: false, index: { unique: true }
+      t.string :workflow_run_id
+      t.string :workflow_name, null: false, index: true
+
+      # Status tracking
+      t.string :status, null: false, default: "pending", index: true
+
+      # Workflow input (for replay/debugging)
+      t.jsonb :input_params, default: {}, null: false
+
+      # Progress tracking - array of { name, extra_info, at } entries
+      t.jsonb :progress, default: [], null: false
+
+      # Error tracking
+      t.text :error_message
+
+      # Timing
+      t.datetime :started_at
+      t.datetime :completed_at
+
+      t.timestamps
+    end
+  end
+end
