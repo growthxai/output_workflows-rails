@@ -1,13 +1,15 @@
 # Output Workflows for Rails
 
-Rails sdk for the Output.ai AI & APIs framework. This SDK supports both synchronous (wait for result) and asynchronous (background polling) execution, as well as webhook-based execution.
+> **Alpha Release** - This gem is currently for GrowthX internal use only.
+
+Rails SDK for the Output.ai AI & APIs framework. This SDK supports both synchronous (wait for result) and asynchronous (background polling) execution, as well as webhook-based execution.
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem "output_workflows"
+gem "output_workflows-rails", github: "growthxai/output_workflows-rails", require: "output_workflows"
 ```
 
 And then execute:
