@@ -4,36 +4,30 @@ module OutputWorkflows
   module Responses
     class Status
       # Workflow status constants
-      STATUS_PENDING = "PENDING"
-      STATUS_RUNNING = "RUNNING"
-      STATUS_COMPLETED = "COMPLETED"
-      STATUS_FAILED = "FAILED"
-      STATUS_TERMINATED = "TERMINATED"
-      STATUS_TIMED_OUT = "TIMED_OUT"
-      STATUS_CANCELED = "CANCELED"
+      STATUS_RUNNING = "running"
+      STATUS_COMPLETED = "completed"
+      STATUS_FAILED = "failed"
+      STATUS_CANCELED = "canceled"
+      STATUS_TERMINATED = "terminated"
+      STATUS_TIMED_OUT = "timed_out"
+      STATUS_CONTINUED = "continued"
 
-      attr_reader :workflow_id, :run_id, :status_name, :status_code, :history_url
+      attr_reader :workflow_id, :status_name, :started_at, :completed_at
 
-      def initialize(workflow_id:, run_id: nil, status_name:, status_code: nil, history_url: nil)
+      def initialize(workflow_id:, status_name:, started_at: nil, completed_at: nil)
         @workflow_id = workflow_id
-        @run_id = run_id
         @status_name = status_name
-        @status_code = status_code
-        @history_url = history_url
+        @started_at = started_at
+        @completed_at = completed_at
       end
 
       def self.from_hash(hash)
         new(
           workflow_id: hash["workflowId"],
-          run_id: hash["runId"],
-          status_name: hash.dig("status", "name") || hash["statusName"],
-          status_code: hash.dig("status", "code") || hash["statusCode"],
-          history_url: hash["historyUrl"]
+          status_name: hash["status"],
+          started_at: hash["startedAt"],
+          completed_at: hash["completedAt"]
         )
-      end
-
-      def pending?
-        status_name == STATUS_PENDING
       end
 
       def running?
@@ -55,10 +49,9 @@ module OutputWorkflows
       def to_h
         {
           workflow_id: workflow_id,
-          run_id: run_id,
           status_name: status_name,
-          status_code: status_code,
-          history_url: history_url
+          started_at: started_at,
+          completed_at: completed_at
         }
       end
     end

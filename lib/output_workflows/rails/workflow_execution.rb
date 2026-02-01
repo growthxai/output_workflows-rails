@@ -39,9 +39,6 @@ module OutputWorkflows
 
         return false unless status_response
 
-        # Update run_id if we got one
-        self.workflow_run_id ||= status_response.run_id
-
         if status_response.completed?
           fetch_output!
           mark_completed!
@@ -61,10 +58,8 @@ module OutputWorkflows
       # Note: This method returns the output but does NOT persist it to the database.
       # Users should extract relevant data to their domain models instead.
       def fetch_output!
-        return unless workflow_run_id
-
         client = output_client
-        result = client.workflow_result(workflow_id, workflow_run_id)
+        result = client.workflow_result(workflow_id)
 
         result&.output
       end
@@ -77,7 +72,6 @@ module OutputWorkflows
         output_response =
           client.wait_for_completion(workflow_id, poll_interval: poll_interval, timeout: timeout)
 
-        self.workflow_run_id = output_response.run_id
         mark_completed!
 
         output_response
@@ -85,7 +79,7 @@ module OutputWorkflows
         mark_failed!(e.status_name)
         raise
       rescue OutputWorkflows::TimeoutError
-        mark_failed!("TIMED_OUT")
+        mark_failed!("timed_out")
         raise
       end
 
