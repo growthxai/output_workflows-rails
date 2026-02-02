@@ -15,9 +15,9 @@ module OutputWorkflows
 
     # Start a workflow asynchronously
     # Returns workflow_id string
-    def start_workflow(workflow_name, args = {}, **options)
-      params = build_workflow_params(workflow_name, args, **options)
-      response = connection.post("/api/workflow", params)
+    def start_workflow(workflow_name, input = {}, **options)
+      params = build_workflow_params(workflow_name, input, **options)
+      response = connection.post("/workflow/start", params)
 
       workflow_id = response.body["workflowId"]
       raise APIError.new("No workflowId returned", response_body: response.body) unless workflow_id
@@ -30,7 +30,7 @@ module OutputWorkflows
     # Get workflow status
     # Returns OutputWorkflows::Responses::Status or nil if not found
     def workflow_status(workflow_id)
-      response = connection.get("/api/workflows/#{workflow_id}")
+      response = connection.get("/workflow/#{workflow_id}/status")
       OutputWorkflows::Responses::Status.from_hash(response.body)
     rescue Faraday::ResourceNotFound
       nil
@@ -40,18 +40,18 @@ module OutputWorkflows
 
     # Get workflow result
     # Returns OutputWorkflows::Responses::WorkflowResult
-    def workflow_result(workflow_id, run_id)
-      response = connection.get("/api/workflows/#{workflow_id}/#{run_id}/output")
+    def workflow_result(workflow_id)
+      response = connection.get("/workflow/#{workflow_id}/result")
       OutputWorkflows::Responses::WorkflowResult.from_hash(response.body)
     rescue Faraday::Error => e
-      handle_faraday_error("get result for workflow #{workflow_id}/#{run_id}", e)
+      handle_faraday_error("get result for workflow #{workflow_id}", e)
     end
 
     # Cancel/stop a running workflow
     # Returns true if cancelled successfully, false if workflow doesn't exist
-    # DELETE /api/workflows/{workflow_id}
+    # PATCH /workflow/{workflow_id}/stop
     def cancel_workflow(workflow_id)
-      connection.delete("/api/workflows/#{workflow_id}")
+      connection.patch("/workflow/#{workflow_id}/stop")
       true # Successfully cancelled
     rescue Faraday::ResourceNotFound, Faraday::ClientError => e
       # 404/410 means workflow doesn't exist or already stopped - idempotent
@@ -74,7 +74,6 @@ module OutputWorkflows
       poll_interval ||= configuration.default_poll_interval
       timeout ||= configuration.default_timeout
       start_time = Time.now
-      run_id = nil
 
       loop do
         elapsed = Time.now - start_time
@@ -85,11 +84,8 @@ module OutputWorkflows
         status_response = workflow_status(workflow_id)
         raise WorkflowNotFoundError, "Workflow #{workflow_id} not found" unless status_response
 
-        # Store run_id when we first see it
-        run_id ||= status_response.run_id
-
         if status_response.completed?
-          return workflow_result(workflow_id, run_id)
+          return workflow_result(workflow_id)
         elsif status_response.failed?
           raise WorkflowFailedError.new(
             "Workflow #{workflow_id} failed with status: #{status_response.status_name}",
@@ -107,6 +103,7 @@ module OutputWorkflows
     def connection
       @connection ||= Faraday.new(url: configuration.api_url) do |faraday|
         faraday.request :json
+        faraday.headers["Authorization"] = "Basic #{configuration.api_key}" if configuration.api_key
         faraday.response :json
         faraday.response :raise_error
         if defined?(::Rails) && ::Rails.env.development?
@@ -118,11 +115,10 @@ module OutputWorkflows
 
     private
 
-    def build_workflow_params(workflow_name, args, **options)
+    def build_workflow_params(workflow_name, input, **options)
       params = {
         workflow_name: workflow_name,
-        args: args,
-        operation: options[:operation] || "start"
+        input: input
       }
 
       # Add task_queue in production

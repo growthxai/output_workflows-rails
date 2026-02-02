@@ -3,27 +3,24 @@
 module OutputWorkflows
   module Responses
     class WorkflowResult
-      attr_reader :workflow_id, :run_id, :input, :output
+      attr_reader :workflow_id, :output, :trace
 
-      def initialize(workflow_id:, run_id:, input: nil, output: nil)
+      def initialize(workflow_id:, output: nil, trace: nil)
         @workflow_id = workflow_id
-        @run_id = run_id
-        @input = input
         @output = output
+        @trace = trace
       end
 
       def self.from_hash(hash)
-        workflow_data = hash["workflow"] || hash
         new(
-          workflow_id: workflow_data["workflowId"],
-          run_id: workflow_data["runId"],
-          input: workflow_data["input"],
-          output: workflow_data["output"]
+          workflow_id: hash["workflowId"],
+          output: hash["output"],
+          trace: hash["trace"]
         )
       end
 
       def to_h
-        { workflow_id: workflow_id, run_id: run_id, input: input, output: output }
+        { workflow_id: workflow_id, output: output, trace: trace }
       end
 
       def to_json(*args)

@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    output_workflows (0.1.0)
+    output_workflows-rails (0.2.0)
       faraday (~> 2.0)
       faraday-net_http
 
@@ -92,7 +92,7 @@ PLATFORMS
 DEPENDENCIES
   irb
   minitest (~> 5.16, ~> 5.0)
-  output_workflows!
+  output_workflows-rails!
   rake (~> 13.0)
   rubocop (~> 1.21)
   webmock (~> 3.0)
