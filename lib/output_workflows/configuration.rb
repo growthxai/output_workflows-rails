@@ -24,7 +24,7 @@ module OutputWorkflows
     private
 
     def default_api_url
-      return "http://localhost:2000" if defined?(::Rails) && (::Rails.env.development? || ::Rails.env.test?)
+      return "http://localhost:3001" if defined?(::Rails) && (::Rails.env.development? || ::Rails.env.test?)
 
       nil
     end
