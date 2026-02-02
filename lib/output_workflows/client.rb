@@ -121,10 +121,8 @@ module OutputWorkflows
         input: input
       }
 
-      # Add task_queue in production
-      if defined?(::Rails) && ::Rails.env.production?
-        params[:task_queue] = options[:task_queue] || "internal-low-priority"
-      end
+      # Add task_queue if explicitly provided
+      params[:task_queue] = options[:task_queue] if options[:task_queue]
 
       # Convert keys to camelCase for API
       deep_transform_keys_to_camel_case(params)
