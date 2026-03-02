@@ -39,8 +39,9 @@ module OutputWorkflows
       end
 
       # Cancel all active executions of a workflow for this executable.
-      def cancel_active_workflow!(workflow_name, reason: "Cancelled by user")
-        WorkflowExecution.cancel_active!(self, workflow_name, reason:)
+      # Cancels on the Output API and marks as failed locally.
+      def cancel_active_workflow!(workflow_name)
+        WorkflowExecution.cancel_active!(self, workflow_name)
       end
     end
   end

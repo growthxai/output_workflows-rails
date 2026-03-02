@@ -32,14 +32,14 @@ module OutputWorkflows
         end
 
         # Cancel all active executions of a workflow for a given executable.
+        # Cancels on the Output API and marks as failed locally.
         #
         #   WorkflowExecution.cancel_active!(persona, "context_persona_enrichment")
-        #   WorkflowExecution.cancel_active!(persona, "context_persona_enrichment", reason: "Re-triggered")
-        def cancel_active!(executable, workflow_name, reason: "Cancelled by user")
+        def cancel_active!(executable, workflow_name)
           for_executable(executable)
             .for_workflow(workflow_name)
             .active
-            .find_each { |e| e.mark_failed!(reason) }
+            .find_each(&:cancel!)
         end
       end
 

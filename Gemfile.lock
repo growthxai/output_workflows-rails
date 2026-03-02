@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    output_workflows-rails (0.2.0)
+    output_workflows-rails (0.3.0)
       faraday (~> 2.0)
       faraday-net_http
 
