@@ -30,6 +30,17 @@ module OutputWorkflows
         def purge_old(days: 30)
           terminal.where(created_at: ..days.days.ago).delete_all
         end
+
+        # Cancel all active executions of a workflow for a given executable.
+        #
+        #   WorkflowExecution.cancel_active!(persona, "context_persona_enrichment")
+        #   WorkflowExecution.cancel_active!(persona, "context_persona_enrichment", reason: "Re-triggered")
+        def cancel_active!(executable, workflow_name, reason: "Cancelled by user")
+          for_executable(executable)
+            .for_workflow(workflow_name)
+            .active
+            .find_each { |e| e.mark_failed!(reason) }
+        end
       end
 
       # Poll status from Output API and update record
@@ -182,6 +193,8 @@ module OutputWorkflows
       def log_error(message)
         ::Rails.logger.error(message) if defined?(::Rails)
       end
+
+      ActiveSupport.run_load_hooks(:output_workflow_execution, self)
     end
   end
 end
