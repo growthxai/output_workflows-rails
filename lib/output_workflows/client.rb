@@ -47,6 +47,53 @@ module OutputWorkflows
       handle_faraday_error("get result for workflow #{workflow_id}", e)
     end
 
+    # Get aggregated cost / token-usage / runtime attributes for a workflow run
+    # GET /workflow/{workflow_id}/trace-attributes              (latest run)
+    # GET /workflow/{workflow_id}/runs/{run_id}/trace-attributes (pinned run)
+    #
+    # Returns the parsed response body as a Hash with string keys, matching
+    # the framework's response shape:
+    #   { "workflowId", "runId", "startTime", "finishTime", "runtime",
+    #     "attributes" => { "cost" => {...}, "tokenUsage" => {...} },
+    #     "traceUrl" }
+    #
+    # Raises:
+    # - WorkflowNotCompletedError on 424 (trace not yet finalized)
+    # - WorkflowNotFoundError on 404
+    # - ServerError on 5xx
+    # - APIError on other network/HTTP errors
+    def trace_attributes(workflow_id, run_id: nil)
+      path = if run_id
+        "/workflow/#{workflow_id}/runs/#{run_id}/trace-attributes"
+      else
+        "/workflow/#{workflow_id}/trace-attributes"
+      end
+
+      response = connection.get(path)
+      response.body
+    rescue Faraday::ResourceNotFound => e
+      raise WorkflowNotFoundError, "Workflow #{workflow_id} not found (#{response_status_for(e)})"
+    rescue Faraday::ServerError => e
+      raise ServerError.new(
+        "Failed to get trace attributes for workflow #{workflow_id}: #{e.message}",
+        response_status: response_status_for(e),
+        response_body: response_body_for(e)
+      )
+    rescue Faraday::ClientError => e
+      status = response_status_for(e)
+      if status == 424
+        raise WorkflowNotCompletedError.new(
+          "Workflow #{workflow_id} has not completed yet (424)",
+          workflow_id: workflow_id,
+          response_status: status,
+          response_body: response_body_for(e)
+        )
+      end
+      handle_faraday_error("get trace attributes for workflow #{workflow_id}", e)
+    rescue Faraday::Error => e
+      handle_faraday_error("get trace attributes for workflow #{workflow_id}", e)
+    end
+
     # Cancel/stop a running workflow
     # Returns true if cancelled successfully, false if workflow doesn't exist
     # PATCH /workflow/{workflow_id}/stop
@@ -137,14 +184,19 @@ module OutputWorkflows
     end
 
     def handle_faraday_error(action, error)
-      status = error.response_status if error.respond_to?(:response_status)
-      body = error.response_body if error.respond_to?(:response_body)
-
       raise OutputWorkflows::APIError.new(
         "Failed to #{action}: #{error.message}",
-        response_status: status,
-        response_body: body
+        response_status: response_status_for(error),
+        response_body: response_body_for(error)
       )
+    end
+
+    def response_status_for(error)
+      error.response_status if error.respond_to?(:response_status)
+    end
+
+    def response_body_for(error)
+      error.response_body if error.respond_to?(:response_body)
     end
 
     def log_info(message)

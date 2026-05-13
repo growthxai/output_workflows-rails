@@ -16,12 +16,30 @@ module OutputWorkflows
     end
   end
 
+  # Raised when the API responds with a 5xx status
+  class ServerError < APIError
+  end
+
   # Raised when workflow times out
   class TimeoutError < Error
   end
 
   # Raised when workflow is not found
   class WorkflowNotFoundError < Error
+  end
+
+  # Raised when a completion-only endpoint is hit before the workflow has finished.
+  # Maps to HTTP 424 FailedDependency (matches the framework's
+  # `WorkflowNotCompletedError` on /result and /trace-log).
+  class WorkflowNotCompletedError < Error
+    attr_reader :workflow_id, :response_status, :response_body
+
+    def initialize(message, workflow_id: nil, response_status: nil, response_body: nil)
+      @workflow_id = workflow_id
+      @response_status = response_status
+      @response_body = response_body
+      super(message)
+    end
   end
 
   # Raised when workflow fails
