@@ -43,6 +43,13 @@ module OutputWorkflows
       def cancel_active_workflow!(workflow_name)
         WorkflowExecution.cancel_active!(self, workflow_name)
       end
+
+      # Lifecycle hook called by webhook processors when a progress event
+      # arrives for a workflow execution belonging to this executable.
+      # Default is a no-op; override on the executable to react (e.g.
+      # transition status from :pending to :running on first progress).
+      def on_workflow_progress(_execution)
+      end
     end
   end
 end
