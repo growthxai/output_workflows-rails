@@ -4,6 +4,7 @@ require "test_helper"
 
 class TestWorkflowExecutionSerializableHash < Minitest::Test
   WorkflowExecution = OutputWorkflows::Rails::WorkflowExecution
+  WorkflowResult    = OutputWorkflows::Responses::WorkflowResult
 
   def setup
     WorkflowExecution.delete_all
@@ -19,7 +20,18 @@ class TestWorkflowExecutionSerializableHash < Minitest::Test
   end
 
   def test_includes_cost_block_when_rollup_data_present
-    @execution.update!(total_cost_micro_usd: 100_000, total_tokens: 7)
+    result = WorkflowResult.new(
+      workflow_id: @execution.workflow_id,
+      output: {},
+      trace: {},
+      aggregations: {
+        "cost"         => { "total" => 0.1 },
+        "tokens"       => { "total" => 7 },
+        "httpRequests" => { "total" => 0 }
+      },
+      attributes: []
+    )
+    @execution.apply_workflow_result!(result)
 
     hash = @execution.reload.serializable_hash
     assert_includes hash.keys, "cost"

@@ -53,8 +53,8 @@ module OutputWorkflows
         return false unless status_response
 
         if status_response.completed?
-          fetch_output!
-          mark_completed!
+          result = fetch_result!
+          mark_completed!(result: result)
           true
         elsif status_response.failed?
           mark_failed!(status_response.status_name)
@@ -67,25 +67,29 @@ module OutputWorkflows
         end
       end
 
-      # Fetch output from Output API and return it
-      # Note: This method returns the output but does NOT persist it to the database.
+      # Fetch the full workflow result envelope from Output API and return it.
+      # Note: This method does NOT persist the output to the database.
       # Users should extract relevant data to their domain models instead.
-      def fetch_output!
+      def fetch_result!
         client = output_client
-        result = client.workflow_result(workflow_id)
-
-        result&.output
+        client.workflow_result(workflow_id)
       end
 
-      # Wait for workflow completion synchronously and return the output
-      # Note: This method returns the output response but does NOT persist the output to the database.
-      # Users should extract relevant data to their domain models instead.
+      # Backwards-compatible accessor returning just the output payload.
+      def fetch_output!
+        fetch_result!&.output
+      end
+
+      # Wait for workflow completion synchronously and return the result envelope.
+      # Note: This method returns the result response but does NOT persist the output
+      # to the database. Users should extract relevant data to their domain models
+      # instead.
       def wait_for_completion!(poll_interval: 5, timeout: 300)
         client = output_client
         output_response =
           client.wait_for_completion(workflow_id, poll_interval: poll_interval, timeout: timeout)
 
-        mark_completed!
+        mark_completed!(result: output_response)
 
         output_response
       rescue OutputWorkflows::WorkflowFailedError => e
@@ -143,7 +147,8 @@ module OutputWorkflows
         update!(status: :running, started_at: Time.current)
       end
 
-      def mark_completed!
+      def mark_completed!(result: nil)
+        apply_workflow_result!(result) if result
         update!(status: :completed, completed_at: Time.current)
       end
 
