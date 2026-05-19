@@ -7,6 +7,7 @@ class AddCostRollupToWorkflowExecutions < ActiveRecord::Migration[7.1]
       t.bigint  :total_tokens,         default: 0, null: false
       t.integer :total_http_calls,     default: 0, null: false
       t.jsonb   :cost_data,            default: {}, null: false
+      t.jsonb   :attributes_data,      default: [], null: false
     end
   end
 end
