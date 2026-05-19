@@ -40,11 +40,18 @@ module OutputWorkflows
 
     # Get workflow result
     # Returns OutputWorkflows::Responses::WorkflowResult
-    def workflow_result(workflow_id)
-      response = connection.get("/workflow/#{workflow_id}/result")
+    #
+    # When `run_id` is provided, hits the run-scoped endpoint
+    # (`/workflow/{id}/runs/{rid}/result`) so callers pin the result to a
+    # specific run. This matters under retries / continue-as-new where multiple
+    # runs can share a `workflow_id`. Falls back to the un-pinned latest-run
+    # endpoint when `run_id` is nil.
+    def workflow_result(workflow_id, run_id: nil)
+      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/result" : "/workflow/#{workflow_id}/result"
+      response = connection.get(path)
       OutputWorkflows::Responses::WorkflowResult.from_hash(response.body)
     rescue Faraday::Error => e
-      handle_faraday_error("get result for workflow #{workflow_id}", e)
+      handle_faraday_error("get result for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
     end
 
     # Cancel/stop a running workflow
@@ -70,7 +77,10 @@ module OutputWorkflows
     # Returns OutputWorkflows::Responses::WorkflowResult on success
     # Raises TimeoutError if timeout exceeded
     # Raises WorkflowFailedError if workflow fails
-    def wait_for_completion(workflow_id, poll_interval: nil, timeout: nil)
+    #
+    # `run_id` is plumbed through to `workflow_result` so the final result
+    # fetch can be pinned to a specific run when known.
+    def wait_for_completion(workflow_id, poll_interval: nil, timeout: nil, run_id: nil)
       poll_interval ||= configuration.default_poll_interval
       timeout ||= configuration.default_timeout
       start_time = Time.now
@@ -85,7 +95,7 @@ module OutputWorkflows
         raise WorkflowNotFoundError, "Workflow #{workflow_id} not found" unless status_response
 
         if status_response.completed?
-          return workflow_result(workflow_id)
+          return workflow_result(workflow_id, run_id: run_id)
         elsif status_response.failed?
           raise WorkflowFailedError.new(
             "Workflow #{workflow_id} failed with status: #{status_response.status_name}",
