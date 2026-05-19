@@ -7,6 +7,8 @@ module OutputWorkflows
 
       belongs_to :executable, polymorphic: true, optional: true
 
+      include Cost
+
       enum :status, %w[pending running completed failed].index_by(&:itself), prefix: true
 
       validates :workflow_id, presence: true, uniqueness: true
