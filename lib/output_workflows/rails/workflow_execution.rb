@@ -45,15 +45,17 @@ module OutputWorkflows
         end
       end
 
-      # Poll status from Output API and update record
-      def poll_status!
+      # Poll status from Output API and update record.
+      # `run_id`, when provided, pins the result fetch to a specific run via
+      # the run-scoped endpoint (matters under retries / continue-as-new).
+      def poll_status!(run_id: nil)
         client = output_client
         status_response = client.workflow_status(workflow_id)
 
         return false unless status_response
 
         if status_response.completed?
-          result = fetch_result!
+          result = fetch_result!(run_id: run_id)
           mark_completed!(result: result)
           true
         elsif status_response.failed?
@@ -70,24 +72,29 @@ module OutputWorkflows
       # Fetch the full workflow result envelope from Output API and return it.
       # Note: This method does NOT persist the output to the database.
       # Users should extract relevant data to their domain models instead.
-      def fetch_result!
+      def fetch_result!(run_id: nil)
         client = output_client
-        client.workflow_result(workflow_id)
+        client.workflow_result(workflow_id, run_id: run_id)
       end
 
       # Backwards-compatible accessor returning just the output payload.
-      def fetch_output!
-        fetch_result!&.output
+      def fetch_output!(run_id: nil)
+        fetch_result!(run_id: run_id)&.output
       end
 
       # Wait for workflow completion synchronously and return the result envelope.
       # Note: This method returns the result response but does NOT persist the output
       # to the database. Users should extract relevant data to their domain models
       # instead.
-      def wait_for_completion!(poll_interval: 5, timeout: 300)
+      def wait_for_completion!(poll_interval: 5, timeout: 300, run_id: nil)
         client = output_client
         output_response =
-          client.wait_for_completion(workflow_id, poll_interval: poll_interval, timeout: timeout)
+          client.wait_for_completion(
+            workflow_id,
+            poll_interval: poll_interval,
+            timeout: timeout,
+            run_id: run_id
+          )
 
         mark_completed!(result: output_response)
 
