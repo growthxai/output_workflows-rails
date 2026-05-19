@@ -6,7 +6,6 @@ class TestWorkflowExecutionSerializableHash < Minitest::Test
   WorkflowExecution = OutputWorkflows::Rails::WorkflowExecution
 
   def setup
-    WorkflowExecution::RollupEvent.delete_all
     WorkflowExecution.delete_all
     @execution = WorkflowExecution.create!(
       workflow_id: "wf_serialize",
@@ -20,12 +19,7 @@ class TestWorkflowExecutionSerializableHash < Minitest::Test
   end
 
   def test_includes_cost_block_when_rollup_data_present
-    @execution.apply_cost_event!(
-      action: "workflow_event.llm",
-      event_id: "evt_serialize",
-      cost: { total: 0.1 },
-      usage: { totalTokens: 7 }
-    )
+    @execution.update!(total_cost_micro_usd: 100_000, total_tokens: 7)
 
     hash = @execution.reload.serializable_hash
     assert_includes hash.keys, "cost"

@@ -42,28 +42,19 @@ ActiveRecord::Schema.define do
     t.bigint :total_tokens,         null: false, default: 0
     t.integer :total_http_calls,    null: false, default: 0
     t.text :cost_data
+    t.text :attributes_data
     t.timestamps
   end
-
-  create_table :output_workflow_execution_events do |t|
-    t.references :workflow_execution, null: false, foreign_key: { to_table: :output_workflow_executions }
-    t.string :event_id, null: false
-    t.timestamps
-  end
-  add_index :output_workflow_execution_events,
-            %i[workflow_execution_id event_id],
-            unique: true
 end
 
-require "output_workflows/rails/workflow_execution/rollup_event"
 require "output_workflows/rails/workflow_execution/cost"
 require "output_workflows/rails/workflow_execution"
 require "output_workflows/rails/webhook_processor"
-require "output_workflows/rails/workflow_event_processor"
 
-# Sqlite doesn't speak jsonb, so the schema above stores cost_data as text.
-# Serialize it as JSON so tests exercise the same hash-in/hash-out shape that
-# Postgres's jsonb adapter provides in production.
+# Sqlite doesn't speak jsonb, so the schema above stores jsonb-backed columns
+# as text. Serialize them as JSON so tests exercise the same hash-in/hash-out
+# shape that Postgres's jsonb adapter provides in production.
 OutputWorkflows::Rails::WorkflowExecution.serialize :cost_data, coder: JSON
+OutputWorkflows::Rails::WorkflowExecution.serialize :attributes_data, coder: JSON
 OutputWorkflows::Rails::WorkflowExecution.serialize :progress, coder: JSON
 OutputWorkflows::Rails::WorkflowExecution.serialize :input_params, coder: JSON
