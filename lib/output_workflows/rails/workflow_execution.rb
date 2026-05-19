@@ -160,6 +160,16 @@ module OutputWorkflows
         status_pending? || status_running?
       end
 
+      # Includes cost rollup payload when populated. Matches the contract
+      # `Analytics::ExecutionCost#as_payload` returns in atlas — the consuming
+      # frontend (`workflow-cost-summary.tsx`) already handles each field.
+      def serializable_hash(options = nil)
+        hash = super
+        payload = cost_payload
+        hash["cost"] = payload if payload
+        hash
+      end
+
       private
 
       def output_client
