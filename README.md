@@ -27,6 +27,45 @@ rails generate output_workflows:install
 rails db:migrate
 ```
 
+## Required schema
+
+This gem does **not** ship migrations in `db/migrate/`. The `output_workflow_executions` schema is owned by the consuming application — the install generator copies a starter migration into your app's `db/migrate/` directory, and you own it from there.
+
+Your application's `output_workflow_executions` table must include the following columns for the gem's runtime features to work. The gem reads these via `WorkflowExecution#apply_workflow_result!`, `#cost_payload`, and the `Cost` concern.
+
+| Column | Type | Default | Null? | Purpose |
+|---|---|---|---|---|
+| `executable_type` | `string` | nil | yes | Polymorphic association — the type of the linked domain record. |
+| `executable_id` | `uuid` | nil | yes | Polymorphic association — the id of the linked domain record. |
+| `workflow_id` | `string` | nil | no | Unique identifier returned by Output.ai when starting a workflow. Indexed unique. |
+| `workflow_run_id` | `string` | nil | yes | Run-scoped identifier used for `workflow_result(workflow_id, run_id)` lookups. |
+| `workflow_name` | `string` | nil | no | Human-readable workflow name. Indexed. |
+| `status` | `string` | `"pending"` | no | One of `pending`, `running`, `completed`, `failed`. Indexed. |
+| `input_params` | `jsonb` | `{}` | no | Input args sent to Output.ai. Stored for replay/debugging. |
+| `progress` | `jsonb` | `[]` | no | Array of `{ name, extra_info, at }` entries written by `ProgressProcessor`. |
+| `error_message` | `text` | nil | yes | Populated on failure. |
+| `started_at` | `datetime` | nil | yes | Set when the execution transitions to `running`. |
+| `completed_at` | `datetime` | nil | yes | Set when the execution transitions to `completed` or `failed`. |
+| `total_cost_micro_usd` | `bigint` | `0` | no | Aggregated cost in micro-USD (1 USD = 1,000,000). Written from `result.aggregations.cost.total`. |
+| `total_tokens` | `bigint` | `0` | no | Aggregated LLM tokens. Written from `result.aggregations.tokens.total`. |
+| `total_http_calls` | `integer` | `0` | no | Aggregated HTTP request count. Written from `result.aggregations.httpRequests.total`. |
+| `cost_data` | `jsonb` | `{}` | no | Reserved for future per-execution sidecar data. |
+| `attributes_data` | `jsonb` | `[]` | no | Raw per-call attributes from the workflow result envelope. Used by `cost_payload` to derive per-component cost breakdowns. |
+
+The starter migration produced by `rails generate output_workflows:install` includes all of these columns. If you already have an `output_workflow_executions` table from an earlier version of this gem, add the cost-rollup columns with a follow-up migration:
+
+```ruby
+class AddCostRollupToOutputWorkflowExecutions < ActiveRecord::Migration[8.0]
+  def change
+    add_column :output_workflow_executions, :total_cost_micro_usd, :bigint,  default: 0,  null: false
+    add_column :output_workflow_executions, :total_tokens,         :bigint,  default: 0,  null: false
+    add_column :output_workflow_executions, :total_http_calls,     :integer, default: 0,  null: false
+    add_column :output_workflow_executions, :cost_data,            :jsonb,   default: {}, null: false
+    add_column :output_workflow_executions, :attributes_data,      :jsonb,   default: [], null: false
+  end
+end
+```
+
 ## Structure
 
 SDK structure:

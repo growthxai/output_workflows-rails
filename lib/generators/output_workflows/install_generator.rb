@@ -25,17 +25,6 @@ module OutputWorkflows
         )
       end
 
-      def create_cost_rollup_migration
-        # `migration_template` derives migration timestamps from the current
-        # time at call site. Sleep 1s so the timestamp differs from the prior
-        # migration when both are generated in the same run.
-        sleep 1
-        migration_template(
-          "add_cost_rollup_to_output_workflow_executions.rb.erb",
-          "db/migrate/add_cost_rollup_to_output_workflow_executions.rb"
-        )
-      end
-
       def create_initializer
         template "output_workflows.rb.erb", "config/initializers/output_workflows.rb"
       end
