@@ -3,11 +3,15 @@
 module OutputWorkflows
   module Rails
     class WorkflowExecution < ::ActiveRecord::Base
+      # Cost concern is defined in workflow_execution/cost.rb. Forward-
+      # declaring here lets `include Cost` register the module in the
+      # ancestor chain before cost.rb fills in its methods.
+      module Cost; end
+      include Cost
+
       self.table_name = OutputWorkflows.configuration.table_name
 
       belongs_to :executable, polymorphic: true, optional: true
-
-      include Cost
 
       enum :status, %w[pending running completed failed].index_by(&:itself), prefix: true
 
@@ -155,7 +159,7 @@ module OutputWorkflows
       end
 
       def mark_completed!(result: nil)
-        apply_workflow_result!(result) if result
+        apply_workflow_result(result) if result
         update!(status: :completed, completed_at: Time.current)
       end
 
@@ -172,13 +176,9 @@ module OutputWorkflows
         status_pending? || status_running?
       end
 
-      # Includes cost rollup payload when populated. Matches the contract
-      # `Analytics::ExecutionCost#as_payload` returns in atlas — the consuming
-      # frontend (`workflow-cost-summary.tsx`) already handles each field.
       def serializable_hash(options = nil)
         hash = super
-        payload = cost_payload
-        hash["cost"] = payload if payload
+        hash["cost"] = cost_payload if cost_payload
         hash
       end
 

@@ -3,16 +3,15 @@
 ## [0.5.0] - 2026-05-19
 
 - Add cost rollup columns (`total_cost_micro_usd`, `total_tokens`,
-  `total_http_calls`, `cost_data`) to `output_workflow_executions`.
-- Add `output_workflow_execution_events` table and
-  `WorkflowExecution::RollupEvent` model with a unique
-  `(workflow_execution_id, event_id)` index for idempotent rollups.
-- Add `WorkflowExecution::Cost` concern: `apply_cost_event!(payload)` for
-  idempotent rollup of `workflow_event.llm`, `workflow_event.http_cost`, and
-  `workflow_event.http` webhook actions, and `cost_payload` returning the
-  contract atlas's frontend already consumes.
-- Add `WorkflowEventProcessor` (subclass of `WebhookProcessor`) that looks up
-  the execution by `workflowId` and dispatches to `apply_cost_event!`.
+  `total_http_calls`, `attributes_data`) to `output_workflow_executions`.
+  Migration is owned by the consuming app — the gem ships only the model
+  accessor.
+- Add `WorkflowExecution::Cost` concern with `apply_workflow_result(result)`
+  for idempotent rollup of the Output API's result envelope, and
+  `cost_payload` returning a normalized contract for frontends.
+- `WorkflowExecution#poll_status!`, `fetch_result!`, and
+  `wait_for_completion!` now accept `run_id:` to target the run-scoped
+  result endpoint (matters under retries / continue-as-new).
 - Override `WorkflowExecution#serializable_hash` to include the `cost` block
   when populated.
 

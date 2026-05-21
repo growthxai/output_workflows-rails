@@ -47,8 +47,8 @@ ActiveRecord::Schema.define do
   end
 end
 
-require "output_workflows/rails/workflow_execution/cost"
 require "output_workflows/rails/workflow_execution"
+require "output_workflows/rails/workflow_execution/cost"
 require "output_workflows/rails/webhook_processor"
 
 # Sqlite doesn't speak jsonb, so the schema above stores jsonb-backed columns
