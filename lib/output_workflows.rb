@@ -5,6 +5,7 @@ require_relative "output_workflows/error"
 require_relative "output_workflows/configuration"
 require_relative "output_workflows/responses/status"
 require_relative "output_workflows/responses/workflow_result"
+require_relative "output_workflows/responses/workflow_history"
 require_relative "output_workflows/client"
 require_relative "output_workflows/webhook_verifier"
 

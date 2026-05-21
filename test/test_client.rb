@@ -4,6 +4,7 @@ require "test_helper"
 
 class TestClient < Minitest::Test
   WorkflowResult = OutputWorkflows::Responses::WorkflowResult
+  WorkflowHistory = OutputWorkflows::Responses::WorkflowHistory
 
   def setup
     @client = OutputWorkflows::Client.new(api_url: "http://test.local", api_key: "test_key")
@@ -44,6 +45,85 @@ class TestClient < Minitest::Test
     @client.workflow_result("wf_abc", run_id: nil)
 
     assert_requested :get, "http://test.local/workflow/wf_abc/result"
+  end
+
+  # --- workflow_history ------------------------------------------------------
+
+  def test_workflow_history_without_run_id_hits_unpinned_endpoint
+    body = {
+      "workflow" => { "workflowId" => "wf_abc", "runId" => "run_xyz", "status" => "RUNNING" },
+      "events" => [{ "eventId" => "1", "eventTypeName" => "WORKFLOW_EXECUTION_STARTED" }],
+      "nextPageToken" => nil
+    }
+    stub_request(:get, "http://test.local/workflow/wf_abc/history")
+      .with(query: { "pageSize" => "50", "includePayloads" => "false" })
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    history = @client.workflow_history("wf_abc")
+
+    assert_instance_of WorkflowHistory, history
+    assert_equal "run_xyz", history.run_id
+    assert_equal 1, history.events.size
+    assert_nil history.next_page_token
+  end
+
+  def test_workflow_history_with_run_id_hits_run_scoped_endpoint
+    body = { "workflow" => { "workflowId" => "wf_abc", "runId" => "run_xyz" }, "events" => [] }
+    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/history")
+      .with(query: { "pageSize" => "50", "includePayloads" => "false" })
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    @client.workflow_history("wf_abc", run_id: "run_xyz")
+
+    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/history",
+                     query: { "pageSize" => "50", "includePayloads" => "false" }
+  end
+
+  def test_workflow_history_plumbs_include_payloads_and_page_size
+    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/history")
+      .with(query: { "pageSize" => "10", "includePayloads" => "true" })
+      .to_return(status: 200, body: { "workflow" => nil, "events" => [] }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    @client.workflow_history("wf_abc", run_id: "run_xyz", page_size: 10, include_payloads: true)
+
+    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/history",
+                     query: { "pageSize" => "10", "includePayloads" => "true" }
+  end
+
+  def test_workflow_history_passes_page_token_when_given
+    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/history")
+      .with(query: { "pageSize" => "50", "includePayloads" => "false", "pageToken" => "next_cursor" })
+      .to_return(status: 200, body: { "workflow" => nil, "events" => [] }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    @client.workflow_history("wf_abc", run_id: "run_xyz", page_token: "next_cursor")
+
+    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/history",
+                     query: { "pageSize" => "50", "includePayloads" => "false", "pageToken" => "next_cursor" }
+  end
+
+  def test_workflow_history_omits_page_token_when_nil
+    stub_request(:get, "http://test.local/workflow/wf_abc/history")
+      .with(query: { "pageSize" => "50", "includePayloads" => "false" })
+      .to_return(status: 200, body: { "events" => [] }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    @client.workflow_history("wf_abc", page_token: nil)
+
+    assert_requested :get, "http://test.local/workflow/wf_abc/history",
+                     query: { "pageSize" => "50", "includePayloads" => "false" }
+  end
+
+  def test_workflow_history_raises_api_error_on_5xx
+    stub_request(:get, "http://test.local/workflow/wf_abc/history")
+      .with(query: hash_including({}))
+      .to_return(status: 500, body: '{"error":"upstream timeout"}',
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_raises(OutputWorkflows::APIError) do
+      @client.workflow_history("wf_abc")
+    end
   end
 
   # --- wait_for_completion ---------------------------------------------------

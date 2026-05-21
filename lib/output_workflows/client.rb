@@ -54,6 +54,33 @@ module OutputWorkflows
       handle_faraday_error("get result for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
     end
 
+    # Get a single page of workflow history events.
+    #
+    # When `run_id` is provided, hits `/workflow/{id}/runs/{rid}/history` so
+    # callers pin the history to a specific run. Without `run_id`, hits the
+    # latest-run endpoint at `/workflow/{id}/history`.
+    #
+    # `page_token` (base64 cursor) drives pagination — the caller paginates by
+    # re-calling with each `next_page_token` until it comes back nil. The
+    # upstream API requires `run_id` when `page_token` is supplied.
+    #
+    # `include_payloads` (default false) toggles whether step inputs, outputs,
+    # and failure details are inlined in events. Defaults to false for the
+    # lightweight polling path; opt in for one-shot inspection of completed
+    # runs.
+    #
+    # Returns OutputWorkflows::Responses::WorkflowHistory.
+    def workflow_history(workflow_id, run_id: nil, page_size: 50, page_token: nil, include_payloads: false)
+      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/history" : "/workflow/#{workflow_id}/history"
+      params = { pageSize: page_size, includePayloads: include_payloads }
+      params[:pageToken] = page_token if page_token
+
+      response = connection.get(path, params)
+      OutputWorkflows::Responses::WorkflowHistory.from_hash(response.body)
+    rescue Faraday::Error => e
+      handle_faraday_error("get history for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
+    end
+
     # Cancel/stop a running workflow
     # Returns true if cancelled successfully, false if workflow doesn't exist
     # PATCH /workflow/{workflow_id}/stop
