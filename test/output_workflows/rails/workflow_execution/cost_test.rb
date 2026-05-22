@@ -14,6 +14,7 @@ module OutputWorkflows
           WorkflowExecution.delete_all
           @execution = WorkflowExecution.create!(
             workflow_id: "wf_abc123",
+            workflow_run_id: "run_abc123",
             workflow_name: "context_persona_enrichment",
             status: "pending"
           )

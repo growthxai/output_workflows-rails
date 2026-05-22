@@ -13,9 +13,42 @@ module OutputWorkflows
         WorkflowExecution.delete_all
         @execution = WorkflowExecution.create!(
           workflow_id: "wf_serialize",
+          workflow_run_id: "run_serialize",
           workflow_name: "context_persona_enrichment",
           status: "running"
         )
+
+      end
+
+      test "validates workflow_run_id presence" do
+        exec = WorkflowExecution.new(workflow_id: "wf_new", workflow_name: "x")
+        refute exec.valid?
+        assert_includes exec.errors[:workflow_run_id], "can't be blank"
+      end
+
+      test "composite uniqueness: same workflow_id + different run_id is allowed" do
+        WorkflowExecution.create!(workflow_id: "wf_can", workflow_run_id: "run_a", workflow_name: "x")
+        second = WorkflowExecution.new(workflow_id: "wf_can", workflow_run_id: "run_b", workflow_name: "x")
+        assert second.valid?, second.errors.full_messages.inspect
+      end
+
+      test "composite uniqueness: same workflow_id + same run_id is rejected" do
+        WorkflowExecution.create!(workflow_id: "wf_dup", workflow_run_id: "run_dup", workflow_name: "x")
+        dupe = WorkflowExecution.new(workflow_id: "wf_dup", workflow_run_id: "run_dup", workflow_name: "x")
+        refute dupe.valid?
+        assert_includes dupe.errors[:workflow_id], "has already been taken"
+      end
+
+      test "find_by_workflow_run! resolves by composite key" do
+        target = WorkflowExecution.create!(workflow_id: "wf_lookup", workflow_run_id: "run_lookup", workflow_name: "x")
+        WorkflowExecution.create!(workflow_id: "wf_lookup", workflow_run_id: "run_other", workflow_name: "x")
+
+        found = WorkflowExecution.find_by_workflow_run!(workflow_id: "wf_lookup", run_id: "run_lookup")
+        assert_equal target.id, found.id
+
+        assert_raises(ActiveRecord::RecordNotFound) do
+          WorkflowExecution.find_by_workflow_run!(workflow_id: "wf_lookup", run_id: "run_missing")
+        end
       end
 
       test "omits cost when no rollup data" do

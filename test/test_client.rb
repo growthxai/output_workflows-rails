@@ -5,9 +5,75 @@ require "test_helper"
 class TestClient < Minitest::Test
   WorkflowResult = OutputWorkflows::Responses::WorkflowResult
   WorkflowHistory = OutputWorkflows::Responses::WorkflowHistory
+  WorkflowDispatch = OutputWorkflows::Responses::WorkflowDispatch
 
   def setup
     @client = OutputWorkflows::Client.new(api_url: "http://test.local", api_key: "test_key")
+  end
+
+  # --- start_workflow --------------------------------------------------------
+
+  def test_start_workflow_returns_dispatch_with_workflow_and_run_ids
+    body = { "workflowId" => "wf_abc", "runId" => "run_xyz" }
+    stub_request(:post, "http://test.local/workflow/start")
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    dispatch = @client.start_workflow("my_workflow", { foo: "bar" })
+
+    assert_instance_of WorkflowDispatch, dispatch
+    assert_equal "wf_abc", dispatch.workflow_id
+    assert_equal "run_xyz", dispatch.run_id
+  end
+
+  def test_start_workflow_raises_when_run_id_missing
+    body = { "workflowId" => "wf_abc" }
+    stub_request(:post, "http://test.local/workflow/start")
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    assert_raises(OutputWorkflows::APIError) do
+      @client.start_workflow("my_workflow", { foo: "bar" })
+    end
+  end
+
+  # --- workflow_status -------------------------------------------------------
+
+  def test_workflow_status_without_run_id_hits_unpinned_endpoint
+    body = { "workflowId" => "wf_abc", "status" => "running" }
+    stub_request(:get, "http://test.local/workflow/wf_abc/status")
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    status = @client.workflow_status("wf_abc")
+
+    assert status.running?
+    assert_requested :get, "http://test.local/workflow/wf_abc/status"
+  end
+
+  def test_workflow_status_with_run_id_hits_run_scoped_endpoint
+    body = { "workflowId" => "wf_abc", "status" => "completed" }
+    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/status")
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    @client.workflow_status("wf_abc", run_id: "run_xyz")
+
+    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/status"
+  end
+
+  # --- cancel_workflow -------------------------------------------------------
+
+  def test_cancel_workflow_without_run_id_hits_unpinned_endpoint
+    stub_request(:patch, "http://test.local/workflow/wf_abc/stop")
+      .to_return(status: 200, body: "", headers: { "Content-Type" => "application/json" })
+
+    assert @client.cancel_workflow("wf_abc")
+    assert_requested :patch, "http://test.local/workflow/wf_abc/stop"
+  end
+
+  def test_cancel_workflow_with_run_id_hits_run_scoped_endpoint
+    stub_request(:patch, "http://test.local/workflow/wf_abc/runs/run_xyz/stop")
+      .to_return(status: 200, body: "", headers: { "Content-Type" => "application/json" })
+
+    assert @client.cancel_workflow("wf_abc", run_id: "run_xyz")
+    assert_requested :patch, "http://test.local/workflow/wf_abc/runs/run_xyz/stop"
   end
 
   # --- workflow_result -------------------------------------------------------
@@ -128,11 +194,11 @@ class TestClient < Minitest::Test
 
   # --- wait_for_completion ---------------------------------------------------
 
-  def test_wait_for_completion_passes_run_id_through_to_result_call
+  def test_wait_for_completion_passes_run_id_through_to_status_and_result_calls
     status_body = { "workflowId" => "wf_abc", "status" => "completed", "statusName" => "COMPLETED" }
     result_body = { "workflowId" => "wf_abc", "output" => { "ok" => true } }
 
-    stub_request(:get, "http://test.local/workflow/wf_abc/status")
+    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/status")
       .to_return(status: 200, body: status_body.to_json, headers: { "Content-Type" => "application/json" })
     stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_xyz/result")
       .to_return(status: 200, body: result_body.to_json, headers: { "Content-Type" => "application/json" })
@@ -140,6 +206,7 @@ class TestClient < Minitest::Test
     result = @client.wait_for_completion("wf_abc", poll_interval: 0.01, timeout: 5, run_id: "run_xyz")
 
     assert_instance_of WorkflowResult, result
+    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/status"
     assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_xyz/result"
   end
 end

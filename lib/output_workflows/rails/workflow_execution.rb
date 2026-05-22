@@ -15,7 +15,8 @@ module OutputWorkflows
 
       enum :status, %w[pending running completed failed].index_by(&:itself), prefix: true
 
-      validates :workflow_id, presence: true, uniqueness: true
+      validates :workflow_id, :workflow_run_id, presence: true
+      validates :workflow_id, uniqueness: { scope: :workflow_run_id }
       validates :workflow_name, presence: true
       validates :status, presence: true
 
@@ -29,8 +30,10 @@ module OutputWorkflows
       after_update :trigger_completion_callback, if: -> { saved_change_to_status? && terminal? }
 
       class << self
-        def find_by_workflow_id!(workflow_id)
-          find_by!(workflow_id: workflow_id)
+        # Look up a specific run by composite key. Both args required —
+        # multiple runs can share a workflow_id under continue-as-new.
+        def find_by_workflow_run!(workflow_id:, run_id:)
+          find_by!(workflow_id: workflow_id, workflow_run_id: run_id)
         end
 
         def purge_old(days: 30)
@@ -49,12 +52,12 @@ module OutputWorkflows
         end
       end
 
-      # Poll status from Output API and update record.
-      # `run_id`, when provided, pins the result fetch to a specific run via
-      # the run-scoped endpoint (matters under retries / continue-as-new).
-      def poll_status!(run_id: nil)
+      # Poll status from Output API and update record. The client call is
+      # pinned to this execution's run_id so we don't pick up the latest run
+      # under continue-as-new.
+      def poll_status!(run_id: workflow_run_id)
         client = output_client
-        status_response = client.workflow_status(workflow_id)
+        status_response = client.workflow_status(workflow_id, run_id: run_id)
 
         return false unless status_response
 
@@ -76,13 +79,13 @@ module OutputWorkflows
       # Fetch the full workflow result envelope from Output API and return it.
       # Note: This method does NOT persist the output to the database.
       # Users should extract relevant data to their domain models instead.
-      def fetch_result!(run_id: nil)
+      def fetch_result!(run_id: workflow_run_id)
         client = output_client
         client.workflow_result(workflow_id, run_id: run_id)
       end
 
       # Backwards-compatible accessor returning just the output payload.
-      def fetch_output!(run_id: nil)
+      def fetch_output!(run_id: workflow_run_id)
         fetch_result!(run_id: run_id)&.output
       end
 
@@ -90,7 +93,7 @@ module OutputWorkflows
       # Note: This method returns the result response but does NOT persist the output
       # to the database. Users should extract relevant data to their domain models
       # instead.
-      def wait_for_completion!(poll_interval: 5, timeout: 300, run_id: nil)
+      def wait_for_completion!(poll_interval: 5, timeout: 300, run_id: workflow_run_id)
         client = output_client
         output_response =
           client.wait_for_completion(
@@ -111,12 +114,13 @@ module OutputWorkflows
         raise
       end
 
-      # Cancel the workflow on Output API and mark as failed locally
+      # Cancel the workflow on Output API and mark as failed locally.
+      # Pinned to this execution's run_id.
       def cancel!
         return if terminal? # Already completed/failed
 
         client = output_client
-        cancelled = client.cancel_workflow(workflow_id)
+        cancelled = client.cancel_workflow(workflow_id, run_id: workflow_run_id)
 
         if cancelled
           mark_failed!("Cancelled by user")

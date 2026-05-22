@@ -29,9 +29,10 @@ ActiveRecord::Schema.define do
 
   create_table :output_workflow_executions do |t|
     t.references :executable, polymorphic: true
-    t.string :workflow_id, null: false, index: { unique: true }
-    t.string :workflow_run_id
+    t.string :workflow_id, null: false
+    t.string :workflow_run_id, null: false
     t.string :workflow_name, null: false, index: true
+    t.index [:workflow_id, :workflow_run_id], unique: true
     t.string :status, null: false, default: "pending", index: true
     t.text :input_params
     t.text :progress

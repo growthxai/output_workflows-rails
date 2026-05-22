@@ -13,29 +13,36 @@ module OutputWorkflows
       @configuration.validate!
     end
 
-    # Start a workflow asynchronously
-    # Returns workflow_id string
+    # Start a workflow asynchronously.
+    # Returns an OutputWorkflows::Responses::WorkflowDispatch carrying both
+    # workflow_id and run_id — both are required to identify the specific run
+    # under retries / continue-as-new where multiple runs share a workflow_id.
     def start_workflow(workflow_name, input = {}, **options)
       params = build_workflow_params(workflow_name, input, **options)
       response = connection.post("/workflow/start", params)
 
-      workflow_id = response.body["workflowId"]
-      raise APIError.new("No workflowId returned", response_body: response.body) unless workflow_id
+      dispatch = OutputWorkflows::Responses::WorkflowDispatch.from_hash(response.body)
+      raise APIError.new("No workflowId returned", response_body: response.body) unless dispatch.workflow_id
+      raise APIError.new("No runId returned", response_body: response.body) unless dispatch.run_id
 
-      workflow_id
+      dispatch
     rescue Faraday::Error => e
       handle_faraday_error("start workflow #{workflow_name}", e)
     end
 
-    # Get workflow status
-    # Returns OutputWorkflows::Responses::Status or nil if not found
-    def workflow_status(workflow_id)
-      response = connection.get("/workflow/#{workflow_id}/status")
+    # Get workflow status.
+    # When `run_id` is provided, hits the run-scoped endpoint
+    # (`/workflow/{id}/runs/{rid}/status`); otherwise falls back to the
+    # un-pinned latest-run endpoint.
+    # Returns OutputWorkflows::Responses::Status or nil if not found.
+    def workflow_status(workflow_id, run_id: nil)
+      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/status" : "/workflow/#{workflow_id}/status"
+      response = connection.get(path)
       OutputWorkflows::Responses::Status.from_hash(response.body)
     rescue Faraday::ResourceNotFound
       nil
     rescue Faraday::Error => e
-      handle_faraday_error("get status for workflow #{workflow_id}", e)
+      handle_faraday_error("get status for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
     end
 
     # Get workflow result
@@ -81,23 +88,25 @@ module OutputWorkflows
       handle_faraday_error("get history for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
     end
 
-    # Cancel/stop a running workflow
-    # Returns true if cancelled successfully, false if workflow doesn't exist
-    # PATCH /workflow/{workflow_id}/stop
-    def cancel_workflow(workflow_id)
-      connection.patch("/workflow/#{workflow_id}/stop")
-      true # Successfully cancelled
+    # Cancel/stop a running workflow.
+    # When `run_id` is provided, hits the run-scoped endpoint
+    # (`PATCH /workflow/{id}/runs/{rid}/stop`); otherwise falls back to the
+    # un-pinned latest-run endpoint.
+    # Returns true if cancelled successfully, false if workflow doesn't exist.
+    def cancel_workflow(workflow_id, run_id: nil)
+      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/stop" : "/workflow/#{workflow_id}/stop"
+      connection.patch(path)
+      true
     rescue Faraday::ResourceNotFound, Faraday::ClientError => e
-      # 404/410 means workflow doesn't exist or already stopped - idempotent
       status = e.response_status if e.respond_to?(:response_status)
       if [404, 410].include?(status)
-        log_info("Workflow #{workflow_id} already stopped (#{status})")
-        false # Already stopped
+        log_info("Workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""} already stopped (#{status})")
+        false
       else
         raise
       end
     rescue Faraday::Error => e
-      handle_faraday_error("cancel workflow #{workflow_id}", e)
+      handle_faraday_error("cancel workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
     end
 
     # Wait for workflow completion by polling status
@@ -105,8 +114,8 @@ module OutputWorkflows
     # Raises TimeoutError if timeout exceeded
     # Raises WorkflowFailedError if workflow fails
     #
-    # `run_id` is plumbed through to `workflow_result` so the final result
-    # fetch can be pinned to a specific run when known.
+    # `run_id` is plumbed through to both `workflow_status` and
+    # `workflow_result` so the polling stays pinned to a specific run.
     def wait_for_completion(workflow_id, poll_interval: nil, timeout: nil, run_id: nil)
       poll_interval ||= configuration.default_poll_interval
       timeout ||= configuration.default_timeout
@@ -118,7 +127,7 @@ module OutputWorkflows
           raise TimeoutError, "Workflow #{workflow_id} timed out after #{timeout} seconds"
         end
 
-        status_response = workflow_status(workflow_id)
+        status_response = workflow_status(workflow_id, run_id: run_id)
         raise WorkflowNotFoundError, "Workflow #{workflow_id} not found" unless status_response
 
         if status_response.completed?

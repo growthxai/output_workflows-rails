@@ -29,14 +29,20 @@ module OutputWorkflows
         payload["workflowId"]
       end
 
+      # Extract run ID from payload. Required to identify the specific run
+      # under continue-as-new where multiple runs share a workflow_id.
+      def run_id
+        payload["runId"]
+      end
+
       # Extract action from payload
       def action
         payload["action"]
       end
 
-      # Find the associated WorkflowExecution record
+      # Find the associated WorkflowExecution record by composite (workflow_id, run_id).
       def execution
-        @execution ||= WorkflowExecution.find_by(workflow_id: workflow_id)
+        @execution ||= WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
       end
 
       private
