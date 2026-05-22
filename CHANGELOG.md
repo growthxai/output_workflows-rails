@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-22
+
+- `WebhookProcessor#execution` falls back to a workflow_id-only lookup when
+  the incoming payload lacks `runId`, so legacy producers continue to work
+  during the callWebhook → lifecycle hook migration. Logs a warning when
+  this path is taken so the producer can be tracked down.
+
 ## [0.6.0] - 2026-05-22
 
 - **BREAKING**: `Client#start_workflow` now returns an

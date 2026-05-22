@@ -40,9 +40,23 @@ module OutputWorkflows
         payload["action"]
       end
 
-      # Find the associated WorkflowExecution record by composite (workflow_id, run_id).
+      # Find the associated WorkflowExecution record. Prefers the composite
+      # (workflow_id, run_id) lookup; falls back to the latest run for this
+      # workflow_id when the payload lacks `runId` (legacy producers that
+      # don't stamp it yet — slated for removal once those producers migrate
+      # to the workflow_end lifecycle hook).
       def execution
-        @execution ||= WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
+        @execution ||= if run_id
+          WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
+        else
+          if defined?(::Rails) && workflow_id
+            ::Rails.logger.warn(
+              "[OutputWorkflows::WebhookProcessor] Payload missing runId for " \
+              "workflow_id=#{workflow_id}; falling back to latest run"
+            )
+          end
+          WorkflowExecution.where(workflow_id: workflow_id).order(created_at: :desc).first
+        end
       end
 
       private
