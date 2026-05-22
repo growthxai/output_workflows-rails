@@ -40,26 +40,28 @@ module OutputWorkflows
         payload["action"]
       end
 
-      # Find the associated WorkflowExecution record. Prefers the composite
-      # (workflow_id, run_id) lookup; falls back to the latest run for this
-      # workflow_id when the payload lacks `runId` (legacy producers that
-      # don't stamp it yet — slated for removal once those producers migrate
-      # to the workflow_end lifecycle hook).
+      # Find the associated WorkflowExecution record. Falls back to the latest
+      # run by `created_at` when payload lacks `runId` — legacy producers; remove
+      # once they migrate to lifecycle webhooks.
       def execution
-        @execution ||= if run_id
-          WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
-        else
-          if defined?(::Rails) && workflow_id
-            ::Rails.logger.warn(
-              "[OutputWorkflows::WebhookProcessor] Payload missing runId for " \
-              "workflow_id=#{workflow_id}; falling back to latest run"
-            )
+        @execution ||=
+          if run_id
+            WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
+          elsif workflow_id
+            warn_legacy_payload
+            WorkflowExecution.where(workflow_id: workflow_id).order(created_at: :desc).first
           end
-          WorkflowExecution.where(workflow_id: workflow_id).order(created_at: :desc).first
-        end
       end
 
       private
+
+      def warn_legacy_payload
+        return unless defined?(::Rails)
+        ::Rails.logger.warn(
+          "[OutputWorkflows::WebhookProcessor] Payload missing runId for " \
+          "workflow_id=#{workflow_id}; falling back to latest run"
+        )
+      end
 
       def normalize_payload(data)
         case data

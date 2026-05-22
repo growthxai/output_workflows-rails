@@ -3,12 +3,6 @@
 module OutputWorkflows
   module Rails
     class WorkflowExecution < ::ActiveRecord::Base
-      # Cost concern is defined in workflow_execution/cost.rb. Forward-
-      # declaring here lets `include Cost` register the module in the
-      # ancestor chain before cost.rb fills in its methods.
-      module Cost; end
-      include Cost
-
       self.table_name = OutputWorkflows.configuration.table_name
 
       belongs_to :executable, polymorphic: true, optional: true
@@ -52,9 +46,7 @@ module OutputWorkflows
         end
       end
 
-      # Poll status from Output API and update record. The client call is
-      # pinned to this execution's run_id so we don't pick up the latest run
-      # under continue-as-new.
+      # Poll status from Output API and update the row.
       def poll_status!(run_id: workflow_run_id)
         client = output_client
         status_response = client.workflow_status(workflow_id, run_id: run_id)
@@ -90,9 +82,6 @@ module OutputWorkflows
       end
 
       # Wait for workflow completion synchronously and return the result envelope.
-      # Note: This method returns the result response but does NOT persist the output
-      # to the database. Users should extract relevant data to their domain models
-      # instead.
       def wait_for_completion!(poll_interval: 5, timeout: 300, run_id: workflow_run_id)
         client = output_client
         output_response =
@@ -115,7 +104,6 @@ module OutputWorkflows
       end
 
       # Cancel the workflow on Output API and mark as failed locally.
-      # Pinned to this execution's run_id.
       def cancel!
         return if terminal? # Already completed/failed
 
@@ -171,6 +159,38 @@ module OutputWorkflows
         update!(status: :failed, completed_at: Time.current, error_message: error_message)
       end
 
+      # Idempotent rollup of the Output API result envelope (aggregations + attributes)
+      # onto the row. Aggregations are absolute totals (not deltas), so re-applying the
+      # same result leaves columns unchanged. See API docs for envelope shape.
+      def apply_workflow_result(result)
+        return if result.nil?
+
+        aggs = result.aggregations || {}
+        update! \
+          total_cost_micro_usd: (aggs.dig("cost", "total").to_f * 1_000_000).round,
+          total_tokens: aggs.dig("tokens", "total").to_i,
+          total_http_calls: aggs.dig("httpRequests", "total").to_i,
+          attributes_data: result.attributes || []
+      end
+
+      def cost_payload
+        return nil unless has_cost_data?
+
+        {
+          total_cost_usd: total_cost_micro_usd / 1_000_000.0,
+          total_http_calls: total_http_calls,
+          runtime_ms: nil,
+          token_usage: {
+            input_tokens: sum_usage_tokens("input"),
+            output_tokens: sum_usage_tokens("output"),
+            cached_input_tokens: sum_usage_tokens("input_cached"),
+            total_tokens: total_tokens
+          },
+          trace_url: nil,
+          cost_components: cost_components_from_attributes
+        }
+      end
+
       # Status helpers
       def terminal?
         status_completed? || status_failed?
@@ -220,6 +240,30 @@ module OutputWorkflows
 
       def log_error(message)
         ::Rails.logger.error(message) if defined?(::Rails)
+      end
+
+      def has_cost_data?
+        total_cost_micro_usd.positive? ||
+          total_tokens.positive? ||
+          total_http_calls.positive?
+      end
+
+      def cost_components_from_attributes
+        return [] unless attributes_data.is_a?(Array)
+
+        attributes_data
+          .group_by { |a| a["type"] }
+          .map { |type, items| { name: type, value_cents: (items.sum { |a| a["total"].to_f } * 100).round } }
+      end
+
+      def sum_usage_tokens(usage_type)
+        return 0 unless attributes_data.is_a?(Array)
+
+        attributes_data
+          .select { |a| a["type"] == "llm:usage" && a["usage"].is_a?(Array) }
+          .flat_map { |a| a["usage"] }
+          .select { |u| u["type"] == usage_type }
+          .sum { |u| u["amount"].to_i }
       end
 
       ActiveSupport.run_load_hooks(:output_workflow_execution, self)

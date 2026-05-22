@@ -30,92 +30,58 @@ module OutputWorkflows
       handle_faraday_error("start workflow #{workflow_name}", e)
     end
 
-    # Get workflow status.
-    # When `run_id` is provided, hits the run-scoped endpoint
-    # (`/workflow/{id}/runs/{rid}/status`); otherwise falls back to the
-    # un-pinned latest-run endpoint.
-    # Returns OutputWorkflows::Responses::Status or nil if not found.
+    # Get workflow status. Returns OutputWorkflows::Responses::Status or nil if not found.
     def workflow_status(workflow_id, run_id: nil)
-      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/status" : "/workflow/#{workflow_id}/status"
-      response = connection.get(path)
+      response = connection.get(run_scoped_path(workflow_id, "status", run_id))
       OutputWorkflows::Responses::Status.from_hash(response.body)
     rescue Faraday::ResourceNotFound
       nil
     rescue Faraday::Error => e
-      handle_faraday_error("get status for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
+      handle_faraday_error("get status for #{workflow_label(workflow_id, run_id)}", e)
     end
 
-    # Get workflow result
-    # Returns OutputWorkflows::Responses::WorkflowResult
-    #
-    # When `run_id` is provided, hits the run-scoped endpoint
-    # (`/workflow/{id}/runs/{rid}/result`) so callers pin the result to a
-    # specific run. This matters under retries / continue-as-new where multiple
-    # runs can share a `workflow_id`. Falls back to the un-pinned latest-run
-    # endpoint when `run_id` is nil.
+    # Get workflow result. Returns OutputWorkflows::Responses::WorkflowResult.
     def workflow_result(workflow_id, run_id: nil)
-      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/result" : "/workflow/#{workflow_id}/result"
-      response = connection.get(path)
+      response = connection.get(run_scoped_path(workflow_id, "result", run_id))
       OutputWorkflows::Responses::WorkflowResult.from_hash(response.body)
     rescue Faraday::Error => e
-      handle_faraday_error("get result for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
+      handle_faraday_error("get result for #{workflow_label(workflow_id, run_id)}", e)
     end
 
     # Get a single page of workflow history events.
-    #
-    # When `run_id` is provided, hits `/workflow/{id}/runs/{rid}/history` so
-    # callers pin the history to a specific run. Without `run_id`, hits the
-    # latest-run endpoint at `/workflow/{id}/history`.
-    #
-    # `page_token` (base64 cursor) drives pagination — the caller paginates by
-    # re-calling with each `next_page_token` until it comes back nil. The
-    # upstream API requires `run_id` when `page_token` is supplied.
-    #
-    # `include_payloads` (default false) toggles whether step inputs, outputs,
-    # and failure details are inlined in events. Defaults to false for the
-    # lightweight polling path; opt in for one-shot inspection of completed
-    # runs.
-    #
-    # Returns OutputWorkflows::Responses::WorkflowHistory.
+    # `page_token` (base64 cursor) drives pagination — re-call with each
+    # `next_page_token` until it comes back nil. The upstream API requires
+    # `run_id` when `page_token` is supplied. `include_payloads` opts into
+    # inlining step inputs/outputs/failures (off by default for polling).
     def workflow_history(workflow_id, run_id: nil, page_size: 50, page_token: nil, include_payloads: false)
-      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/history" : "/workflow/#{workflow_id}/history"
       params = { pageSize: page_size, includePayloads: include_payloads }
       params[:pageToken] = page_token if page_token
 
-      response = connection.get(path, params)
+      response = connection.get(run_scoped_path(workflow_id, "history", run_id), params)
       OutputWorkflows::Responses::WorkflowHistory.from_hash(response.body)
     rescue Faraday::Error => e
-      handle_faraday_error("get history for workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
+      handle_faraday_error("get history for #{workflow_label(workflow_id, run_id)}", e)
     end
 
-    # Cancel/stop a running workflow.
-    # When `run_id` is provided, hits the run-scoped endpoint
-    # (`PATCH /workflow/{id}/runs/{rid}/stop`); otherwise falls back to the
-    # un-pinned latest-run endpoint.
-    # Returns true if cancelled successfully, false if workflow doesn't exist.
+    # Cancel/stop a running workflow. Returns true if cancelled, false if it doesn't exist.
     def cancel_workflow(workflow_id, run_id: nil)
-      path = run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/stop" : "/workflow/#{workflow_id}/stop"
-      connection.patch(path)
+      connection.patch(run_scoped_path(workflow_id, "stop", run_id))
       true
     rescue Faraday::ResourceNotFound, Faraday::ClientError => e
       status = e.response_status if e.respond_to?(:response_status)
       if [404, 410].include?(status)
-        log_info("Workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""} already stopped (#{status})")
+        log_info("#{workflow_label(workflow_id, run_id).capitalize} already stopped (#{status})")
         false
       else
         raise
       end
     rescue Faraday::Error => e
-      handle_faraday_error("cancel workflow #{workflow_id}#{run_id ? " run #{run_id}" : ""}", e)
+      handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e)
     end
 
-    # Wait for workflow completion by polling status
-    # Returns OutputWorkflows::Responses::WorkflowResult on success
-    # Raises TimeoutError if timeout exceeded
-    # Raises WorkflowFailedError if workflow fails
-    #
-    # `run_id` is plumbed through to both `workflow_status` and
-    # `workflow_result` so the polling stays pinned to a specific run.
+    # Wait for workflow completion by polling status.
+    # Returns OutputWorkflows::Responses::WorkflowResult on success;
+    # raises TimeoutError or WorkflowFailedError.
     def wait_for_completion(workflow_id, poll_interval: nil, timeout: nil, run_id: nil)
       poll_interval ||= configuration.default_poll_interval
       timeout ||= configuration.default_timeout
@@ -160,6 +126,14 @@ module OutputWorkflows
     end
 
     private
+
+    def run_scoped_path(workflow_id, action, run_id)
+      run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/#{action}" : "/workflow/#{workflow_id}/#{action}"
+    end
+
+    def workflow_label(workflow_id, run_id)
+      run_id ? "workflow #{workflow_id} run #{run_id}" : "workflow #{workflow_id}"
+    end
 
     def build_workflow_params(workflow_name, input, **options)
       params = {

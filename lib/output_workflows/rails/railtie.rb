@@ -5,7 +5,6 @@ module OutputWorkflows
     class Railtie < ::Rails::Railtie
       initializer "output_workflows.load_rails_components" do
         require_relative "workflow_execution"
-        require_relative "workflow_execution/cost"
         require_relative "executable"
         require_relative "status_check_job"
         require_relative "webhook_processor"

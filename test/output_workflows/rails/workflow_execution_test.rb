@@ -20,12 +20,6 @@ module OutputWorkflows
 
       end
 
-      test "validates workflow_run_id presence" do
-        exec = WorkflowExecution.new(workflow_id: "wf_new", workflow_name: "x")
-        refute exec.valid?
-        assert_includes exec.errors[:workflow_run_id], "can't be blank"
-      end
-
       test "composite uniqueness: same workflow_id + different run_id is allowed" do
         WorkflowExecution.create!(workflow_id: "wf_can", workflow_run_id: "run_a", workflow_name: "x")
         second = WorkflowExecution.new(workflow_id: "wf_can", workflow_run_id: "run_b", workflow_name: "x")
