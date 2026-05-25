@@ -9,7 +9,8 @@ module OutputWorkflows
 
       enum :status, %w[pending running completed failed].index_by(&:itself), prefix: true
 
-      validates :workflow_id, presence: true, uniqueness: true
+      validates :workflow_id, :workflow_run_id, presence: true
+      validates :workflow_id, uniqueness: { scope: :workflow_run_id }
       validates :workflow_name, presence: true
       validates :status, presence: true
 
@@ -23,8 +24,10 @@ module OutputWorkflows
       after_update :trigger_completion_callback, if: -> { saved_change_to_status? && terminal? }
 
       class << self
-        def find_by_workflow_id!(workflow_id)
-          find_by!(workflow_id: workflow_id)
+        # Look up a specific run by composite key. Both args required —
+        # multiple runs can share a workflow_id under continue-as-new.
+        def find_by_workflow_run!(workflow_id:, run_id:)
+          find_by!(workflow_id: workflow_id, workflow_run_id: run_id)
         end
 
         def purge_old(days: 30)
@@ -43,16 +46,16 @@ module OutputWorkflows
         end
       end
 
-      # Poll status from Output API and update record
-      def poll_status!
+      # Poll status from Output API and update the row.
+      def poll_status!(run_id: workflow_run_id)
         client = output_client
-        status_response = client.workflow_status(workflow_id)
+        status_response = client.workflow_status(workflow_id, run_id: run_id)
 
         return false unless status_response
 
         if status_response.completed?
-          fetch_output!
-          mark_completed!
+          result = fetch_result!(run_id: run_id)
+          mark_completed!(result: result)
           true
         elsif status_response.failed?
           mark_failed!(status_response.status_name)
@@ -65,25 +68,31 @@ module OutputWorkflows
         end
       end
 
-      # Fetch output from Output API and return it
-      # Note: This method returns the output but does NOT persist it to the database.
+      # Fetch the full workflow result envelope from Output API and return it.
+      # Note: This method does NOT persist the output to the database.
       # Users should extract relevant data to their domain models instead.
-      def fetch_output!
+      def fetch_result!(run_id: workflow_run_id)
         client = output_client
-        result = client.workflow_result(workflow_id)
-
-        result&.output
+        client.workflow_result(workflow_id, run_id: run_id)
       end
 
-      # Wait for workflow completion synchronously and return the output
-      # Note: This method returns the output response but does NOT persist the output to the database.
-      # Users should extract relevant data to their domain models instead.
-      def wait_for_completion!(poll_interval: 5, timeout: 300)
+      # Backwards-compatible accessor returning just the output payload.
+      def fetch_output!(run_id: workflow_run_id)
+        fetch_result!(run_id: run_id)&.output
+      end
+
+      # Wait for workflow completion synchronously and return the result envelope.
+      def wait_for_completion!(poll_interval: 5, timeout: 300, run_id: workflow_run_id)
         client = output_client
         output_response =
-          client.wait_for_completion(workflow_id, poll_interval: poll_interval, timeout: timeout)
+          client.wait_for_completion(
+            workflow_id,
+            poll_interval: poll_interval,
+            timeout: timeout,
+            run_id: run_id
+          )
 
-        mark_completed!
+        mark_completed!(result: output_response)
 
         output_response
       rescue OutputWorkflows::WorkflowFailedError => e
@@ -94,12 +103,12 @@ module OutputWorkflows
         raise
       end
 
-      # Cancel the workflow on Output API and mark as failed locally
+      # Cancel the workflow on Output API and mark as failed locally.
       def cancel!
         return if terminal? # Already completed/failed
 
         client = output_client
-        cancelled = client.cancel_workflow(workflow_id)
+        cancelled = client.cancel_workflow(workflow_id, run_id: workflow_run_id)
 
         if cancelled
           mark_failed!("Cancelled by user")
@@ -141,12 +150,45 @@ module OutputWorkflows
         update!(status: :running, started_at: Time.current)
       end
 
-      def mark_completed!
+      def mark_completed!(result: nil)
+        apply_workflow_result(result) if result
         update!(status: :completed, completed_at: Time.current)
       end
 
       def mark_failed!(error_message = nil)
         update!(status: :failed, completed_at: Time.current, error_message: error_message)
+      end
+
+      # Idempotent rollup of the Output API result envelope (aggregations + attributes)
+      # onto the row. Aggregations are absolute totals (not deltas), so re-applying the
+      # same result leaves columns unchanged. See API docs for envelope shape.
+      def apply_workflow_result(result)
+        return if result.nil?
+
+        aggs = result.aggregations || {}
+        update! \
+          total_cost_micro_usd: (aggs.dig("cost", "total").to_f * 1_000_000).round,
+          total_tokens: aggs.dig("tokens", "total").to_i,
+          total_http_calls: aggs.dig("httpRequests", "total").to_i,
+          attributes_data: result.attributes || []
+      end
+
+      def cost_payload
+        return nil unless has_cost_data?
+
+        {
+          total_cost_usd: total_cost_micro_usd / 1_000_000.0,
+          total_http_calls: total_http_calls,
+          runtime_ms: nil,
+          token_usage: {
+            input_tokens: sum_usage_tokens("input"),
+            output_tokens: sum_usage_tokens("output"),
+            cached_input_tokens: sum_usage_tokens("input_cached"),
+            total_tokens: total_tokens
+          },
+          trace_url: nil,
+          cost_components: cost_components_from_attributes
+        }
       end
 
       # Status helpers
@@ -156,6 +198,12 @@ module OutputWorkflows
 
       def active?
         status_pending? || status_running?
+      end
+
+      def serializable_hash(options = nil)
+        hash = super
+        hash["cost"] = cost_payload if cost_payload
+        hash
       end
 
       private
@@ -192,6 +240,30 @@ module OutputWorkflows
 
       def log_error(message)
         ::Rails.logger.error(message) if defined?(::Rails)
+      end
+
+      def has_cost_data?
+        total_cost_micro_usd.positive? ||
+          total_tokens.positive? ||
+          total_http_calls.positive?
+      end
+
+      def cost_components_from_attributes
+        return [] unless attributes_data.is_a?(Array)
+
+        attributes_data
+          .group_by { |a| a["type"] }
+          .map { |type, items| { name: type, value_cents: (items.sum { |a| a["total"].to_f } * 100).round } }
+      end
+
+      def sum_usage_tokens(usage_type)
+        return 0 unless attributes_data.is_a?(Array)
+
+        attributes_data
+          .select { |a| a["type"] == "llm:usage" && a["usage"].is_a?(Array) }
+          .flat_map { |a| a["usage"] }
+          .select { |u| u["type"] == usage_type }
+          .sum { |u| u["amount"].to_i }
       end
 
       ActiveSupport.run_load_hooks(:output_workflow_execution, self)

@@ -29,17 +29,39 @@ module OutputWorkflows
         payload["workflowId"]
       end
 
+      # Extract run ID from payload. Required to identify the specific run
+      # under continue-as-new where multiple runs share a workflow_id.
+      def run_id
+        payload["runId"]
+      end
+
       # Extract action from payload
       def action
         payload["action"]
       end
 
-      # Find the associated WorkflowExecution record
+      # Find the associated WorkflowExecution record. Falls back to the latest
+      # run by `created_at` when payload lacks `runId` — legacy producers; remove
+      # once they migrate to lifecycle webhooks.
       def execution
-        @execution ||= WorkflowExecution.find_by(workflow_id: workflow_id)
+        @execution ||=
+          if run_id
+            WorkflowExecution.find_by(workflow_id: workflow_id, workflow_run_id: run_id)
+          elsif workflow_id
+            warn_legacy_payload
+            WorkflowExecution.where(workflow_id: workflow_id).order(created_at: :desc).first
+          end
       end
 
       private
+
+      def warn_legacy_payload
+        return unless defined?(::Rails)
+        ::Rails.logger.warn(
+          "[OutputWorkflows::WebhookProcessor] Payload missing runId for " \
+          "workflow_id=#{workflow_id}; falling back to latest run"
+        )
+      end
 
       def normalize_payload(data)
         case data
