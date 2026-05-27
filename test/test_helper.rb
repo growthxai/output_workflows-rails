@@ -46,6 +46,15 @@ ActiveRecord::Schema.define do
     t.text :attributes_data
     t.timestamps
   end
+
+  create_table :output_workflow_execution_events do |t|
+    t.belongs_to :workflow_execution, null: false
+    t.string :event_id, null: false
+    t.timestamps
+  end
+  add_index :output_workflow_execution_events,
+            [:workflow_execution_id, :event_id],
+            unique: true
 end
 
 require "output_workflows/rails/workflow_execution"

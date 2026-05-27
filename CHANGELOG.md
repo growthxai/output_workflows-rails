@@ -1,5 +1,27 @@
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-27
+
+**Per-event cost hooks**
+
+- **BREAKING**: Cost data is no longer written from the Output API result
+  envelope at workflow completion. `WorkflowExecution#apply_workflow_result`
+  is removed, and `mark_completed!` no longer touches the cost columns.
+  Lifecycle is now state-only (status + completion timestamp).
+- Add `WorkflowExecution::Cost#apply_cost_event!(payload)` — an idempotent,
+  row-locked increment of `total_cost_micro_usd` / `total_tokens` /
+  `total_http_calls` driven by per-event webhooks. Supports
+  `workflow_event.llm`, `workflow_event.http_cost`, and `workflow_event.http`
+  actions; other actions no-op after dedup.
+- Add `WorkflowExecution::RollupEvent` AR class backing a new
+  `output_workflow_execution_events` dedup table. Dedup is keyed by
+  `(workflow_execution_id, event_id)` and enforced by a unique index — repeat
+  events return `false` and do not double-increment.
+- Install generator now emits a second migration creating
+  `output_workflow_execution_events`. Existing installs need to add the
+  table manually (see README).
+- `cost_payload` is unchanged and stays compatible with the same columns.
+
 ## [0.5.0] - 2026-05-22
 
 **Cost rollup**

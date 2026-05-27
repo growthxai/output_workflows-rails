@@ -50,18 +50,12 @@ module OutputWorkflows
       end
 
       test "includes cost block when rollup data present" do
-        result = WorkflowResult.new(
-          workflow_id: @execution.workflow_id,
-          output: {},
-          trace: {},
-          aggregations: {
-            "cost" => { "total" => 0.1 },
-            "tokens" => { "total" => 7 },
-            "httpRequests" => { "total" => 0 }
-          },
-          attributes: []
+        @execution.apply_cost_event!(
+          "event_id" => "evt_ser",
+          "action"   => "workflow_event.llm",
+          "cost"     => { "total" => 0.1 },
+          "usage"    => { "totalTokens" => 7 }
         )
-        @execution.apply_workflow_result(result)
 
         hash = @execution.reload.serializable_hash
         assert_includes hash.keys, "cost"

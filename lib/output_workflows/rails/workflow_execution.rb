@@ -150,44 +150,16 @@ module OutputWorkflows
         update!(status: :running, started_at: Time.current)
       end
 
+      # Mark this execution completed. The `result:` kwarg is accepted for
+      # backwards compatibility but is no longer used — cost data arrives via
+      # per-event webhooks (`apply_cost_event!`), not from the workflow result
+      # envelope.
       def mark_completed!(result: nil)
-        apply_workflow_result(result) if result
         update!(status: :completed, completed_at: Time.current)
       end
 
       def mark_failed!(error_message = nil)
         update!(status: :failed, completed_at: Time.current, error_message: error_message)
-      end
-
-      # Idempotent rollup of the Output API result envelope (aggregations + attributes)
-      # onto the row. Aggregations are absolute totals (not deltas), so re-applying the
-      # same result leaves columns unchanged. See API docs for envelope shape.
-      def apply_workflow_result(result)
-        return if result.nil?
-
-        aggs = result.aggregations || {}
-        update! \
-          total_cost_micro_usd: (aggs.dig("cost", "total").to_f * 1_000_000).round,
-          total_tokens: aggs.dig("tokens", "total").to_i,
-          total_http_calls: aggs.dig("httpRequests", "total").to_i,
-          attributes_data: result.attributes || []
-      end
-
-      def cost_payload
-        return nil unless has_cost_data?
-
-        {
-          total_cost_usd: total_cost_micro_usd / 1_000_000.0,
-          total_http_calls: total_http_calls,
-          token_usage: {
-            input_tokens: sum_usage_tokens("input"),
-            output_tokens: sum_usage_tokens("output"),
-            cached_input_tokens: sum_usage_tokens("input_cached"),
-            total_tokens: total_tokens
-          },
-          trace_url: nil,
-          cost_components: cost_components_from_attributes
-        }
       end
 
       # Status helpers
@@ -241,31 +213,14 @@ module OutputWorkflows
         ::Rails.logger.error(message) if defined?(::Rails)
       end
 
-      def has_cost_data?
-        total_cost_micro_usd.positive? ||
-          total_tokens.positive? ||
-          total_http_calls.positive?
-      end
-
-      def cost_components_from_attributes
-        return [] unless attributes_data.is_a?(Array)
-
-        attributes_data
-          .group_by { |a| a["type"] }
-          .map { |type, items| { name: type, value_cents: (items.sum { |a| a["total"].to_f } * 100).round } }
-      end
-
-      def sum_usage_tokens(usage_type)
-        return 0 unless attributes_data.is_a?(Array)
-
-        attributes_data
-          .select { |a| a["type"] == "llm:usage" && a["usage"].is_a?(Array) }
-          .flat_map { |a| a["usage"] }
-          .select { |u| u["type"] == usage_type }
-          .sum { |u| u["amount"].to_i }
-      end
-
       ActiveSupport.run_load_hooks(:output_workflow_execution, self)
     end
   end
 end
+
+require_relative "workflow_execution/cost"
+require_relative "workflow_execution/rollup_event"
+
+OutputWorkflows::Rails::WorkflowExecution.include(
+  OutputWorkflows::Rails::WorkflowExecution::Cost
+)
