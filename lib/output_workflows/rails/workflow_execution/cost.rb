@@ -82,7 +82,6 @@ module OutputWorkflows
           {
             total_cost_usd: total_cost_micro_usd / 1_000_000.0,
             total_http_calls: total_http_calls,
-            runtime_ms: nil,
             token_usage: {
               input_tokens: total_input_tokens,
               output_tokens: total_output_tokens,
