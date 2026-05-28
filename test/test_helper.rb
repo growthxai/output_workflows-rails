@@ -42,6 +42,11 @@ ActiveRecord::Schema.define do
     t.bigint :total_cost_micro_usd, null: false, default: 0
     t.bigint :total_tokens,         null: false, default: 0
     t.integer :total_http_calls,    null: false, default: 0
+    t.integer :total_input_tokens,         null: false, default: 0
+    t.integer :total_output_tokens,        null: false, default: 0
+    t.integer :total_cached_input_tokens,  null: false, default: 0
+    t.bigint  :total_llm_cost_micro_usd,   null: false, default: 0
+    t.bigint  :total_http_cost_micro_usd,  null: false, default: 0
     t.text :cost_data
     t.text :attributes_data
     t.timestamps

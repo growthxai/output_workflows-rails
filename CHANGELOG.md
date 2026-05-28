@@ -1,5 +1,28 @@
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-28
+
+**Per-attribute cost rollup columns**
+
+- Extend `apply_cost_event!` to also roll up per-attribute breakdowns into
+  dedicated columns as events arrive:
+  - `workflow_event.llm` now also increments
+    `total_llm_cost_micro_usd`, `total_input_tokens`,
+    `total_output_tokens`, and `total_cached_input_tokens` from the event's
+    `cost.total` and `usage.{inputTokens,outputTokens,cachedInputTokens}`.
+  - `workflow_event.http_cost` now also increments
+    `total_http_cost_micro_usd` from the event's `cost.total`.
+- `cost_payload` now sources `token_usage.{input_tokens,output_tokens,cached_input_tokens}`
+  and `cost_components` directly from these columns instead of parsing
+  `attributes_data`. `cost_components` emits `llm:usage` and/or
+  `http:request:cost` entries based on the corresponding rollup column being
+  positive. The legacy `cost_components_from_attributes` and
+  `sum_usage_tokens` helpers are removed.
+- Migration is owned by the consuming app — the gem ships only the model
+  accessor. Hosts must add `total_input_tokens`, `total_output_tokens`,
+  `total_cached_input_tokens`, `total_llm_cost_micro_usd`, and
+  `total_http_cost_micro_usd` columns to `output_workflow_executions`.
+
 ## [0.6.0] - 2026-05-27
 
 **Per-event cost hooks**

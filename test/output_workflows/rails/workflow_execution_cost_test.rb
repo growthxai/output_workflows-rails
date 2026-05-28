@@ -22,22 +22,38 @@ module OutputWorkflows
 
       # --- apply_cost_event! ---------------------------------------------
 
-      test "llm event increments total_cost_micro_usd and total_tokens" do
-        result = @execution.apply_cost_event!(llm_event(id: "evt_1", cost: 0.123456, total_tokens: 1_234))
+      test "llm event increments total_cost_micro_usd, llm cost rollup, and per-type tokens" do
+        result = @execution.apply_cost_event!(
+          llm_event(
+            id: "evt_1",
+            cost: 0.123456,
+            total_tokens: 1_234,
+            input_tokens: 800,
+            output_tokens: 400,
+            cached_input_tokens: 34
+          )
+        )
         @execution.reload
 
         assert_equal true, result
         assert_equal 123_456, @execution.total_cost_micro_usd
+        assert_equal 123_456, @execution.total_llm_cost_micro_usd
+        assert_equal 0,       @execution.total_http_cost_micro_usd
         assert_equal 1_234,   @execution.total_tokens
+        assert_equal 800,     @execution.total_input_tokens
+        assert_equal 400,     @execution.total_output_tokens
+        assert_equal 34,      @execution.total_cached_input_tokens
         assert_equal 0,       @execution.total_http_calls
       end
 
-      test "http_cost event increments total_cost_micro_usd only" do
+      test "http_cost event increments total_cost_micro_usd and http cost rollup" do
         result = @execution.apply_cost_event!(http_cost_event(id: "evt_h", cost: 0.05))
         @execution.reload
 
         assert_equal true, result
         assert_equal 50_000, @execution.total_cost_micro_usd
+        assert_equal 0,      @execution.total_llm_cost_micro_usd
+        assert_equal 50_000, @execution.total_http_cost_micro_usd
         assert_equal 0,      @execution.total_tokens
         assert_equal 0,      @execution.total_http_calls
       end
@@ -53,27 +69,40 @@ module OutputWorkflows
       end
 
       test "events of the same kind accumulate sequentially" do
-        @execution.apply_cost_event!(llm_event(id: "evt_a", cost: 0.10, total_tokens: 100))
-        @execution.apply_cost_event!(llm_event(id: "evt_b", cost: 0.25, total_tokens: 250))
+        @execution.apply_cost_event!(llm_event(id: "evt_a", cost: 0.10, total_tokens: 100, input_tokens: 70, output_tokens: 30))
+        @execution.apply_cost_event!(llm_event(id: "evt_b", cost: 0.25, total_tokens: 250, input_tokens: 150, output_tokens: 100))
         @execution.apply_cost_event!(http_event(id: "evt_c"))
         @execution.apply_cost_event!(http_event(id: "evt_d"))
         @execution.apply_cost_event!(http_cost_event(id: "evt_e", cost: 0.01))
         @execution.reload
 
         assert_equal 360_000, @execution.total_cost_micro_usd
+        assert_equal 350_000, @execution.total_llm_cost_micro_usd
+        assert_equal 10_000,  @execution.total_http_cost_micro_usd
         assert_equal 350,     @execution.total_tokens
+        assert_equal 220,     @execution.total_input_tokens
+        assert_equal 130,     @execution.total_output_tokens
+        assert_equal 0,       @execution.total_cached_input_tokens
         assert_equal 2,       @execution.total_http_calls
       end
 
       test "duplicate event_id returns false and does not double-increment" do
-        first = @execution.apply_cost_event!(llm_event(id: "evt_dup", cost: 0.10, total_tokens: 100))
-        dup   = @execution.apply_cost_event!(llm_event(id: "evt_dup", cost: 0.10, total_tokens: 100))
+        first = @execution.apply_cost_event!(
+          llm_event(id: "evt_dup", cost: 0.10, total_tokens: 100, input_tokens: 60, output_tokens: 40, cached_input_tokens: 10)
+        )
+        dup = @execution.apply_cost_event!(
+          llm_event(id: "evt_dup", cost: 0.10, total_tokens: 100, input_tokens: 60, output_tokens: 40, cached_input_tokens: 10)
+        )
         @execution.reload
 
         assert_equal true,  first
         assert_equal false, dup
         assert_equal 100_000, @execution.total_cost_micro_usd
+        assert_equal 100_000, @execution.total_llm_cost_micro_usd
         assert_equal 100,     @execution.total_tokens
+        assert_equal 60,      @execution.total_input_tokens
+        assert_equal 40,      @execution.total_output_tokens
+        assert_equal 10,      @execution.total_cached_input_tokens
         assert_equal 1, RollupEvent.where(workflow_execution_id: @execution.id, event_id: "evt_dup").count
       end
 
@@ -149,26 +178,59 @@ module OutputWorkflows
       end
 
       test "cost_payload returns contract shape from columns" do
-        @execution.update!(
-          total_cost_micro_usd: 500_000,
-          total_tokens: 1_000,
-          total_http_calls: 2,
-          attributes_data: []
+        @execution.apply_cost_event!(
+          llm_event(
+            id: "evt_p1",
+            cost: 0.40,
+            total_tokens: 1_000,
+            input_tokens: 700,
+            output_tokens: 250,
+            cached_input_tokens: 50
+          )
         )
+        @execution.apply_cost_event!(http_cost_event(id: "evt_p2", cost: 0.10))
+        @execution.apply_cost_event!(http_event(id: "evt_p3"))
+        @execution.apply_cost_event!(http_event(id: "evt_p4"))
 
-        payload = @execution.cost_payload
+        payload = @execution.reload.cost_payload
 
         assert_in_delta 0.5, payload[:total_cost_usd], 1e-9
         assert_equal 2,    payload[:total_http_calls]
         refute_includes    payload.keys, :runtime_ms
         assert_equal({
+                       input_tokens: 700,
+                       output_tokens: 250,
+                       cached_input_tokens: 50,
+                       total_tokens: 1_000
+                     }, payload[:token_usage])
+        assert_nil payload[:trace_url]
+        assert_equal(
+          [
+            { name: "llm:usage",         value_cents: 40 },
+            { name: "http:request:cost", value_cents: 10 }
+          ],
+          payload[:cost_components]
+        )
+      end
+
+      test "cost_payload cost_components only includes http when no llm events" do
+        @execution.apply_cost_event!(http_cost_event(id: "evt_h1", cost: 0.07))
+        @execution.apply_cost_event!(http_event(id: "evt_h2"))
+
+        payload = @execution.reload.cost_payload
+
+        assert_in_delta 0.07, payload[:total_cost_usd], 1e-9
+        assert_equal 1, payload[:total_http_calls]
+        assert_equal({
                        input_tokens: 0,
                        output_tokens: 0,
                        cached_input_tokens: 0,
-                       total_tokens: 1_000
+                       total_tokens: 0
                      }, payload[:token_usage])
-        assert_nil       payload[:trace_url]
-        assert_equal [], payload[:cost_components]
+        assert_equal(
+          [{ name: "http:request:cost", value_cents: 7 }],
+          payload[:cost_components]
+        )
       end
 
       # --- mark_completed! ----------------------------------------------
@@ -209,12 +271,17 @@ module OutputWorkflows
 
       private
 
-      def llm_event(id:, cost:, total_tokens:)
+      def llm_event(id:, cost:, total_tokens:, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0)
         {
           "event_id" => id,
           "action"   => "workflow_event.llm",
           "cost"     => { "total" => cost },
-          "usage"    => { "totalTokens" => total_tokens }
+          "usage"    => {
+            "totalTokens"       => total_tokens,
+            "inputTokens"       => input_tokens,
+            "outputTokens"      => output_tokens,
+            "cachedInputTokens" => cached_input_tokens
+          }
         }
       end
 

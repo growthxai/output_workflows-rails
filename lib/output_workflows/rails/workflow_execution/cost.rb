@@ -32,8 +32,11 @@ module OutputWorkflows
         # successful apply.
         #
         # Supported actions:
-        #   - "workflow_event.llm"       => increments total_cost_micro_usd + total_tokens
-        #   - "workflow_event.http_cost" => increments total_cost_micro_usd
+        #   - "workflow_event.llm"       => increments total_cost_micro_usd +
+        #                                    total_llm_cost_micro_usd +
+        #                                    total_tokens / input / output / cached_input
+        #   - "workflow_event.http_cost" => increments total_cost_micro_usd +
+        #                                    total_http_cost_micro_usd
         #   - "workflow_event.http"      => increments total_http_calls
         #   - anything else              => no-op (dedup row still inserted)
         def apply_cost_event!(payload)
@@ -51,11 +54,18 @@ module OutputWorkflows
           with_lock do
             case action
             when "workflow_event.llm"
-              increment :total_cost_micro_usd, (payload.dig(:cost, :total).to_f * 1_000_000).round
-              increment :total_tokens, payload.dig(:usage, :totalTokens).to_i
+              cost_micro = (payload.dig(:cost, :total).to_f * 1_000_000).round
+              increment :total_cost_micro_usd,      cost_micro
+              increment :total_llm_cost_micro_usd,  cost_micro
+              increment :total_tokens,              payload.dig(:usage, :totalTokens).to_i
+              increment :total_input_tokens,        payload.dig(:usage, :inputTokens).to_i
+              increment :total_output_tokens,       payload.dig(:usage, :outputTokens).to_i
+              increment :total_cached_input_tokens, payload.dig(:usage, :cachedInputTokens).to_i
               save!
             when "workflow_event.http_cost"
-              increment :total_cost_micro_usd, (payload.dig(:cost, :total).to_f * 1_000_000).round
+              cost_micro = (payload.dig(:cost, :total).to_f * 1_000_000).round
+              increment :total_cost_micro_usd,      cost_micro
+              increment :total_http_cost_micro_usd, cost_micro
               save!
             when "workflow_event.http"
               increment :total_http_calls, 1
@@ -74,13 +84,13 @@ module OutputWorkflows
             total_http_calls: total_http_calls,
             runtime_ms: nil,
             token_usage: {
-              input_tokens: sum_usage_tokens("input"),
-              output_tokens: sum_usage_tokens("output"),
-              cached_input_tokens: sum_usage_tokens("input_cached"),
+              input_tokens: total_input_tokens,
+              output_tokens: total_output_tokens,
+              cached_input_tokens: total_cached_input_tokens,
               total_tokens: total_tokens
             },
             trace_url: nil,
-            cost_components: cost_components_from_attributes
+            cost_components: cost_components_from_rollups
           }
         end
 
@@ -92,22 +102,11 @@ module OutputWorkflows
             total_http_calls.positive?
         end
 
-        def cost_components_from_attributes
-          return [] unless attributes_data.is_a?(Array)
-
-          attributes_data
-            .group_by { |a| a["type"] }
-            .map { |type, items| { name: type, value_cents: (items.sum { |a| a["total"].to_f } * 100).round } }
-        end
-
-        def sum_usage_tokens(usage_type)
-          return 0 unless attributes_data.is_a?(Array)
-
-          attributes_data
-            .select { |a| a["type"] == "llm:usage" && a["usage"].is_a?(Array) }
-            .flat_map { |a| a["usage"] }
-            .select { |u| u["type"] == usage_type }
-            .sum { |u| u["amount"].to_i }
+        def cost_components_from_rollups
+          components = []
+          components << { name: "llm:usage",         value_cents: (total_llm_cost_micro_usd  / 10_000.0).round } if total_llm_cost_micro_usd.positive?
+          components << { name: "http:request:cost", value_cents: (total_http_cost_micro_usd / 10_000.0).round } if total_http_cost_micro_usd.positive?
+          components
         end
       end
     end
