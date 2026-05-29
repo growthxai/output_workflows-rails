@@ -1,6 +1,6 @@
 ## [Unreleased]
 
-## [0.7.0] - 2026-05-28
+## [0.7.0] - 2026-05-29
 
 **Per-attribute cost rollup columns**
 
@@ -8,20 +8,24 @@
   dedicated columns as events arrive:
   - `workflow_event.llm` now also increments
     `total_llm_cost_micro_usd`, `total_input_tokens`,
-    `total_output_tokens`, and `total_cached_input_tokens` from the event's
-    `cost.total` and `usage.{inputTokens,outputTokens,cachedInputTokens}`.
+    `total_output_tokens`, `total_cached_input_tokens`, and
+    `total_reasoning_tokens` from the event's `cost.total` and
+    `usage.{inputTokens,outputTokens,cachedInputTokens,reasoningTokens}`.
   - `workflow_event.http_cost` now also increments
     `total_http_cost_micro_usd` from the event's `cost.total`.
-- `cost_payload` now sources `token_usage.{input_tokens,output_tokens,cached_input_tokens}`
+- `cost_payload` now sources
+  `token_usage.{input_tokens,output_tokens,cached_input_tokens,reasoning_tokens}`
   and `cost_components` directly from these columns instead of parsing
   `attributes_data`. `cost_components` emits `llm:usage` and/or
   `http:request:cost` entries based on the corresponding rollup column being
   positive. The legacy `cost_components_from_attributes` and
   `sum_usage_tokens` helpers are removed.
-- Migration is owned by the consuming app — the gem ships only the model
-  accessor. Hosts must add `total_input_tokens`, `total_output_tokens`,
-  `total_cached_input_tokens`, `total_llm_cost_micro_usd`, and
-  `total_http_cost_micro_usd` columns to `output_workflow_executions`.
+- The install generator's `create_output_workflow_executions` migration
+  template now ships the new breakdown columns
+  (`total_input_tokens`, `total_output_tokens`, `total_cached_input_tokens`,
+  `total_reasoning_tokens`, `total_llm_cost_micro_usd`,
+  `total_http_cost_micro_usd`) so fresh installs pick them up automatically.
+  Existing installs need to add the columns manually — see README.
 
 ## [0.6.0] - 2026-05-27
 

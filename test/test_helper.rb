@@ -45,6 +45,7 @@ ActiveRecord::Schema.define do
     t.integer :total_input_tokens,         null: false, default: 0
     t.integer :total_output_tokens,        null: false, default: 0
     t.integer :total_cached_input_tokens,  null: false, default: 0
+    t.integer :total_reasoning_tokens,     null: false, default: 0
     t.bigint  :total_llm_cost_micro_usd,   null: false, default: 0
     t.bigint  :total_http_cost_micro_usd,  null: false, default: 0
     t.text :cost_data

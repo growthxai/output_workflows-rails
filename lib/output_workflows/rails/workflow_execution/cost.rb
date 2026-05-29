@@ -34,7 +34,8 @@ module OutputWorkflows
         # Supported actions:
         #   - "workflow_event.llm"       => increments total_cost_micro_usd +
         #                                    total_llm_cost_micro_usd +
-        #                                    total_tokens / input / output / cached_input
+        #                                    total_tokens / input / output / cached_input /
+        #                                    reasoning
         #   - "workflow_event.http_cost" => increments total_cost_micro_usd +
         #                                    total_http_cost_micro_usd
         #   - "workflow_event.http"      => increments total_http_calls
@@ -61,6 +62,7 @@ module OutputWorkflows
               increment :total_input_tokens,        payload.dig(:usage, :inputTokens).to_i
               increment :total_output_tokens,       payload.dig(:usage, :outputTokens).to_i
               increment :total_cached_input_tokens, payload.dig(:usage, :cachedInputTokens).to_i
+              increment :total_reasoning_tokens,    payload.dig(:usage, :reasoningTokens).to_i
               save!
             when "workflow_event.http_cost"
               cost_micro = (payload.dig(:cost, :total).to_f * 1_000_000).round
@@ -86,6 +88,7 @@ module OutputWorkflows
               input_tokens: total_input_tokens,
               output_tokens: total_output_tokens,
               cached_input_tokens: total_cached_input_tokens,
+              reasoning_tokens: total_reasoning_tokens,
               total_tokens: total_tokens
             },
             trace_url: nil,

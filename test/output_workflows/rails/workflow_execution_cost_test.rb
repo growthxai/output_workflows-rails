@@ -86,6 +86,32 @@ module OutputWorkflows
         assert_equal 2,       @execution.total_http_calls
       end
 
+      test "llm event increments total_reasoning_tokens from usage.reasoningTokens" do
+        result = @execution.apply_cost_event!(
+          llm_event(
+            id: "evt_reason",
+            cost: 0.05,
+            total_tokens: 100,
+            input_tokens: 30,
+            output_tokens: 70,
+            reasoning_tokens: 42
+          )
+        )
+        @execution.reload
+
+        assert_equal true, result
+        assert_equal 42, @execution.total_reasoning_tokens
+      end
+
+      test "reasoning tokens accumulate across multiple llm events" do
+        @execution.apply_cost_event!(llm_event(id: "evt_r1", cost: 0.01, total_tokens: 50,  reasoning_tokens: 10))
+        @execution.apply_cost_event!(llm_event(id: "evt_r2", cost: 0.02, total_tokens: 80,  reasoning_tokens: 25))
+        @execution.apply_cost_event!(llm_event(id: "evt_r3", cost: 0.03, total_tokens: 120, reasoning_tokens: 7))
+        @execution.reload
+
+        assert_equal 42, @execution.total_reasoning_tokens
+      end
+
       test "duplicate event_id returns false and does not double-increment" do
         first = @execution.apply_cost_event!(
           llm_event(id: "evt_dup", cost: 0.10, total_tokens: 100, input_tokens: 60, output_tokens: 40, cached_input_tokens: 10)
@@ -201,6 +227,7 @@ module OutputWorkflows
                        input_tokens: 700,
                        output_tokens: 250,
                        cached_input_tokens: 50,
+                       reasoning_tokens: 0,
                        total_tokens: 1_000
                      }, payload[:token_usage])
         assert_nil payload[:trace_url]
@@ -211,6 +238,23 @@ module OutputWorkflows
           ],
           payload[:cost_components]
         )
+      end
+
+      test "cost_payload token_usage reflects total_reasoning_tokens column" do
+        @execution.apply_cost_event!(
+          llm_event(
+            id: "evt_pr",
+            cost: 0.10,
+            total_tokens: 200,
+            input_tokens: 120,
+            output_tokens: 80,
+            reasoning_tokens: 17
+          )
+        )
+
+        payload = @execution.reload.cost_payload
+
+        assert_equal 17, payload[:token_usage][:reasoning_tokens]
       end
 
       test "cost_payload cost_components only includes http when no llm events" do
@@ -225,6 +269,7 @@ module OutputWorkflows
                        input_tokens: 0,
                        output_tokens: 0,
                        cached_input_tokens: 0,
+                       reasoning_tokens: 0,
                        total_tokens: 0
                      }, payload[:token_usage])
         assert_equal(
@@ -271,7 +316,7 @@ module OutputWorkflows
 
       private
 
-      def llm_event(id:, cost:, total_tokens:, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0)
+      def llm_event(id:, cost:, total_tokens:, input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, reasoning_tokens: 0)
         {
           "event_id" => id,
           "action"   => "workflow_event.llm",
@@ -280,7 +325,8 @@ module OutputWorkflows
             "totalTokens"       => total_tokens,
             "inputTokens"       => input_tokens,
             "outputTokens"      => output_tokens,
-            "cachedInputTokens" => cached_input_tokens
+            "cachedInputTokens" => cached_input_tokens,
+            "reasoningTokens"   => reasoning_tokens
           }
         }
       end
