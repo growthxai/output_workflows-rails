@@ -1,53 +1,28 @@
 ## [Unreleased]
 
-## [0.7.0] - 2026-05-29
-
-**Per-attribute cost rollup columns**
-
-- Extend `apply_cost_event!` to also roll up per-attribute breakdowns into
-  dedicated columns as events arrive:
-  - `workflow_event.llm` now also increments
-    `total_llm_cost_micro_usd`, `total_input_tokens`,
-    `total_output_tokens`, `total_cached_input_tokens`, and
-    `total_reasoning_tokens` from the event's `cost.total` and
-    `usage.{inputTokens,outputTokens,cachedInputTokens,reasoningTokens}`.
-  - `workflow_event.http_cost` now also increments
-    `total_http_cost_micro_usd` from the event's `cost.total`.
-- `cost_payload` now sources
-  `token_usage.{input_tokens,output_tokens,cached_input_tokens,reasoning_tokens}`
-  and `cost_components` directly from these columns instead of parsing
-  `attributes_data`. `cost_components` emits `llm:usage` and/or
-  `http:request:cost` entries based on the corresponding rollup column being
-  positive. The legacy `cost_components_from_attributes` and
-  `sum_usage_tokens` helpers are removed.
-- The install generator's `create_output_workflow_executions` migration
-  template now ships the new breakdown columns
-  (`total_input_tokens`, `total_output_tokens`, `total_cached_input_tokens`,
-  `total_reasoning_tokens`, `total_llm_cost_micro_usd`,
-  `total_http_cost_micro_usd`) so fresh installs pick them up automatically.
-  Existing installs need to add the columns manually — see README.
-
-## [0.6.0] - 2026-05-27
+## [0.6.0] - 2026-05-29
 
 **Per-event cost hooks**
 
-- **BREAKING**: Cost data is no longer written from the Output API result
-  envelope at workflow completion. `WorkflowExecution#apply_workflow_result`
-  is removed, and `mark_completed!` no longer touches the cost columns.
-  Lifecycle is now state-only (status + completion timestamp).
-- Add `WorkflowExecution::Cost#apply_cost_event!(payload)` — an idempotent,
-  row-locked increment of `total_cost_micro_usd` / `total_tokens` /
-  `total_http_calls` driven by per-event webhooks. Supports
-  `workflow_event.llm`, `workflow_event.http_cost`, and `workflow_event.http`
-  actions; other actions no-op after dedup.
+- **BREAKING**: `WorkflowExecution#apply_workflow_result` is removed.
+  `mark_completed!` is state-only (status + completed_at). Cost data is now
+  written from per-event webhooks instead of the Output API result envelope.
+- Add `WorkflowExecution::Cost#apply_cost_event!(payload)` — idempotent,
+  row-locked increment driven by `workflow_event.llm`,
+  `workflow_event.http_cost`, and `workflow_event.http` actions. Rolls up both
+  the totals (`total_cost_micro_usd`, `total_tokens`, `total_http_calls`) and
+  per-attribute breakdowns (`total_llm_cost_micro_usd`,
+  `total_http_cost_micro_usd`, `total_input_tokens`, `total_output_tokens`,
+  `total_cached_input_tokens`, `total_reasoning_tokens`) from
+  `payload.cost.total` and `payload.usage.*`.
 - Add `WorkflowExecution::RollupEvent` AR class backing a new
   `output_workflow_execution_events` dedup table. Dedup is keyed by
-  `(workflow_execution_id, event_id)` and enforced by a unique index — repeat
-  events return `false` and do not double-increment.
-- Install generator now emits a second migration creating
-  `output_workflow_execution_events`. Existing installs need to add the
-  table manually (see README).
-- `cost_payload` is unchanged and stays compatible with the same columns.
+  `(workflow_execution_id, event_id)` — repeat events return `false`.
+- `cost_payload` now sources `token_usage` (including `reasoning_tokens`) and
+  `cost_components` directly from the rollup columns. Legacy
+  `cost_components_from_attributes` and `sum_usage_tokens` are removed.
+- Install generator ships the new breakdown columns + the dedup-table
+  migration. Existing installs add them manually (see README).
 
 ## [0.5.0] - 2026-05-22
 
