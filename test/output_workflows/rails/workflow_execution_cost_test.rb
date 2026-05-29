@@ -120,7 +120,7 @@ module OutputWorkflows
 
         assert_in_delta 0.5, payload[:total_cost_usd], 1e-9
         assert_equal 2,    payload[:total_http_calls]
-        assert_nil         payload[:runtime_ms]
+        refute_includes    payload.keys, :runtime_ms
         assert_equal({
                        input_tokens: 0,
                        output_tokens: 0,
