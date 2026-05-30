@@ -6,7 +6,7 @@ module OutputWorkflows
   class Client
     attr_reader :configuration
 
-    def initialize(api_url: nil, api_key: nil, **options)
+    def initialize(api_url: nil, api_key: nil, **_options)
       @configuration = OutputWorkflows.configuration.dup
       @configuration.api_url = api_url if api_url
       @configuration.api_key = api_key if api_key
@@ -63,18 +63,18 @@ module OutputWorkflows
       handle_faraday_error("get history for #{workflow_label(workflow_id, run_id)}", e)
     end
 
-    # Cancel/stop a running workflow. Returns true if cancelled, false if it doesn't exist.
+    # Cancel/stop a running workflow. Returns true if cancelled, false if it
+    # couldn't be stopped. Any 4xx means the run is already terminal/gone/
+    # expired — functionally "already stopped" — so return false rather than
+    # raise (raising failed whole jobs, e.g. Sitemap::HealthAuditJob on a 400).
     def cancel_workflow(workflow_id, run_id: nil)
       connection.patch(run_scoped_path(workflow_id, "stop", run_id))
       true
-    rescue Faraday::ResourceNotFound, Faraday::ClientError => e
+    rescue Faraday::ClientError => e
       status = e.response_status if e.respond_to?(:response_status)
-      if [404, 410].include?(status)
-        log_info("#{workflow_label(workflow_id, run_id).capitalize} already stopped (#{status})")
-        false
-      else
-        raise
-      end
+      label = workflow_label(workflow_id, run_id).capitalize
+      log_info("#{label} could not be stopped (#{status}) — treating as already stopped")
+      false
     rescue Faraday::Error => e
       handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e)
     end
@@ -89,9 +89,7 @@ module OutputWorkflows
 
       loop do
         elapsed = Time.now - start_time
-        if elapsed > timeout
-          raise TimeoutError, "Workflow #{workflow_id} timed out after #{timeout} seconds"
-        end
+        raise TimeoutError, "Workflow #{workflow_id} timed out after #{timeout} seconds" if elapsed > timeout
 
         status_response = workflow_status(workflow_id, run_id: run_id)
         raise WorkflowNotFoundError, "Workflow #{workflow_id} not found" unless status_response
@@ -168,9 +166,9 @@ module OutputWorkflows
     end
 
     def log_info(message)
-      if defined?(::Rails)
-        ::Rails.logger.info(message)
-      end
+      return unless defined?(::Rails)
+
+      ::Rails.logger.info(message)
     end
   end
 end
