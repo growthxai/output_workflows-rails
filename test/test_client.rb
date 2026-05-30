@@ -76,6 +76,18 @@ class TestClient < Minitest::Test
     assert_requested :patch, "http://test.local/workflow/wf_abc/runs/run_xyz/stop"
   end
 
+  # The API returns 4xx when the run can't be stopped because it's already in a
+  # terminal state. That's functionally "already stopped" — return false, don't
+  # raise. (Sitemap::HealthAuditJob was failing on a 400 here.)
+  [400, 404, 409, 410].each do |status|
+    define_method("test_cancel_workflow_treats_#{status}_as_already_stopped") do
+      stub_request(:patch, "http://test.local/workflow/wf_abc/stop")
+        .to_return(status:, body: "", headers: { "Content-Type" => "application/json" })
+
+      assert_equal false, @client.cancel_workflow("wf_abc")
+    end
+  end
+
   # --- workflow_result -------------------------------------------------------
 
   def test_workflow_result_without_run_id_hits_unpinned_endpoint
