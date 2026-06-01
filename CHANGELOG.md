@@ -1,5 +1,29 @@
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-01
+
+**JSONB per-event cost log + drop dedup table**
+
+- **BREAKING**: Drop the `WorkflowExecution::RollupEvent` AR model and the
+  `output_workflow_execution_events` dedup table. Per-event detail is now
+  stored on `output_workflow_executions.cost_events` (a JSONB array column)
+  and dedup happens via in-memory membership check on that array, inside
+  `with_lock`. Hosts that mirrored this data into their own table can drop
+  it and query the JSONB column directly.
+- **BREAKING**: Drop the unused `cost_data` and `attributes_data` JSONB
+  columns from the install migration. Existing installs can drop them with
+  a follow-up migration.
+- **BREAKING**: `WorkflowExecution#mark_completed!` no longer accepts a
+  `result:` kwarg. Cost arrives via per-event webhooks, so the lifecycle
+  method is state-only.
+- `apply_cost_event!` now appends a rich per-event entry to `cost_events`
+  with `event_id`, `action_type`, `workflow_name`, `provider`, `model_id`,
+  `url`, `cost_micro_usd`, all token counts, `duration_ms`, and
+  `occurred_at`. Rollup column behavior is unchanged.
+- Drop the `require_relative` glue in `workflow_execution.rb`; the Cost
+  module is included directly inside the class body. Hosts using Rails
+  autoload / Zeitwerk see no behavior change.
+
 ## [0.6.0] - 2026-05-29
 
 **Per-event cost hooks**

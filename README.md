@@ -55,8 +55,7 @@ Your application's `output_workflow_executions` table must include the following
 | `total_reasoning_tokens` | `integer` | `0` | no | Per-attribute LLM reasoning-token rollup. Incremented from `usage.reasoningTokens`. |
 | `total_llm_cost_micro_usd` | `bigint` | `0` | no | LLM-only cost rollup, in micro-USD. Incremented from `workflow_event.llm` cost. |
 | `total_http_cost_micro_usd` | `bigint` | `0` | no | HTTP-only cost rollup, in micro-USD. Incremented from `workflow_event.http_cost` cost. |
-| `cost_data` | `jsonb` | `{}` | no | Reserved for future per-execution sidecar data. |
-| `attributes_data` | `jsonb` | `[]` | no | Legacy column; no longer populated by the gem since the result envelope's `attributes` was removed. Kept for back-compat reads. |
+| `cost_events` | `jsonb` | `[]` | no | Per-event cost log. Each entry carries `event_id`, `action_type`, `workflow_name`, `provider`, `model_id`, `url`, `cost_micro_usd`, token counts, `duration_ms`, and `occurred_at`. Appended by `apply_cost_event!`; also used for in-memory event-id dedup. |
 
 The starter migration produced by `rails generate output_workflows:install` includes all of these columns. If you already have an `output_workflow_executions` table from an earlier version of this gem, add the cost-rollup columns with a follow-up migration:
 
@@ -72,8 +71,7 @@ class AddCostRollupToOutputWorkflowExecutions < ActiveRecord::Migration[8.0]
     add_column :output_workflow_executions, :total_reasoning_tokens,     :integer, default: 0,  null: false
     add_column :output_workflow_executions, :total_llm_cost_micro_usd,   :bigint,  default: 0,  null: false
     add_column :output_workflow_executions, :total_http_cost_micro_usd,  :bigint,  default: 0,  null: false
-    add_column :output_workflow_executions, :cost_data,                  :jsonb,   default: {}, null: false
-    add_column :output_workflow_executions, :attributes_data,            :jsonb,   default: [], null: false
+    add_column :output_workflow_executions, :cost_events,                :jsonb,   default: [], null: false
   end
 end
 ```

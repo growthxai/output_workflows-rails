@@ -53,20 +53,16 @@ class TestWorkflowExecutionRunId < Minitest::Test
 
   # --- poll_status! ----------------------------------------------------------
 
-  def test_poll_status_defaults_run_id_and_pins_both_status_and_result
+  def test_poll_status_defaults_run_id_to_executions_workflow_run_id
     status_body = { "workflowId" => "wf_abc", "status" => "completed", "statusName" => "COMPLETED" }
-    result_body = { "workflowId" => "wf_abc", "output" => { "ok" => true } }
 
     stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_abc/status")
       .to_return(status: 200, body: status_body.to_json, headers: { "Content-Type" => "application/json" })
-    stub_request(:get, "http://test.local/workflow/wf_abc/runs/run_abc/result")
-      .to_return(status: 200, body: result_body.to_json, headers: { "Content-Type" => "application/json" })
 
     assert @execution.poll_status!
     @execution.reload
     assert @execution.status_completed?
     assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_abc/status"
-    assert_requested :get, "http://test.local/workflow/wf_abc/runs/run_abc/result"
   end
 
   # --- wait_for_completion! --------------------------------------------------

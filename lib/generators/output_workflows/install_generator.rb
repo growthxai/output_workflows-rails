@@ -25,13 +25,6 @@ module OutputWorkflows
         )
       end
 
-      def create_events_migration
-        migration_template(
-          "create_output_workflow_execution_events.rb.erb",
-          "db/migrate/create_output_workflow_execution_events.rb"
-        )
-      end
-
       def create_initializer
         template "output_workflows.rb.erb", "config/initializers/output_workflows.rb"
       end

@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
+require_relative "workflow_execution/cost"
+
 module OutputWorkflows
   module Rails
     class WorkflowExecution < ::ActiveRecord::Base
       self.table_name = OutputWorkflows.configuration.table_name
+
+      include OutputWorkflows::Rails::WorkflowExecution::Cost
 
       belongs_to :executable, polymorphic: true, optional: true
 
@@ -54,8 +58,7 @@ module OutputWorkflows
         return false unless status_response
 
         if status_response.completed?
-          result = fetch_result!(run_id: run_id)
-          mark_completed!(result: result)
+          mark_completed!
           true
         elsif status_response.failed?
           mark_failed!(status_response.status_name)
@@ -92,7 +95,7 @@ module OutputWorkflows
             run_id: run_id
           )
 
-        mark_completed!(result: output_response)
+        mark_completed!
 
         output_response
       rescue OutputWorkflows::WorkflowFailedError => e
@@ -150,11 +153,10 @@ module OutputWorkflows
         update!(status: :running, started_at: Time.current)
       end
 
-      # Mark this execution completed. The `result:` kwarg is accepted for
-      # backwards compatibility but is no longer used — cost data arrives via
-      # per-event webhooks (`apply_cost_event!`), not from the workflow result
-      # envelope.
-      def mark_completed!(result: nil)
+      # Mark this execution completed. State-only transition — cost data
+      # arrives via per-event webhooks (`apply_cost_event!`), not from the
+      # workflow result envelope.
+      def mark_completed!
         update!(status: :completed, completed_at: Time.current)
       end
 
@@ -217,10 +219,3 @@ module OutputWorkflows
     end
   end
 end
-
-require_relative "workflow_execution/cost"
-require_relative "workflow_execution/rollup_event"
-
-OutputWorkflows::Rails::WorkflowExecution.include(
-  OutputWorkflows::Rails::WorkflowExecution::Cost
-)

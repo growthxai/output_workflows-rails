@@ -2,85 +2,74 @@
 
 module OutputWorkflows
   module Rails
-    class WorkflowExecution
+    class WorkflowExecution < ::ActiveRecord::Base
       # Cost rollup behavior for WorkflowExecution.
       #
       # Cost data arrives as a stream of per-event webhooks (one per LLM call,
       # one per HTTP call). Each event is processed by the host application,
       # which calls `apply_cost_event!(payload)` on the matching execution row
-      # to perform an idempotent, row-locked increment of the cost columns.
-      #
-      # The `RollupEvent` AR class backs the dedup table:
-      # `output_workflow_execution_events`. Atlas (the consuming app) owns the
-      # migration that creates it.
+      # to perform an idempotent, row-locked increment of the cost columns and
+      # append the per-event detail to the `cost_events` JSONB array.
       module Cost
         extend ActiveSupport::Concern
 
-        included do
-          has_many :rollup_events,
-                   class_name: "OutputWorkflows::Rails::WorkflowExecution::RollupEvent",
-                   foreign_key: :workflow_execution_id,
-                   inverse_of: :workflow_execution,
-                   dependent: :destroy
-        end
-
         # Apply a single cost event to the execution row.
         #
-        # Idempotent on `event_id` via a unique index on
-        # `(workflow_execution_id, event_id)`. Returns `false` if the event is
-        # a duplicate or if required fields are missing; returns `true` after a
-        # successful apply.
-        #
-        # Supported actions:
-        #   - "workflow_event.llm"       => increments total_cost_micro_usd +
-        #                                    total_llm_cost_micro_usd +
-        #                                    total_tokens / input / output / cached_input /
-        #                                    reasoning
-        #   - "workflow_event.http_cost" => increments total_cost_micro_usd +
-        #                                    total_http_cost_micro_usd
-        #   - "workflow_event.http"      => increments total_http_calls
-        #   - anything else              => no-op (dedup row still inserted)
+        # Idempotent on event_id via membership check on the cost_events
+        # JSONB array. Returns true on first apply, false on duplicate or
+        # missing required fields.
         def apply_cost_event!(payload)
           payload  = payload.with_indifferent_access
           event_id = payload[:event_id].presence || payload[:eventId].presence
           action   = payload[:action].presence
           return false if event_id.blank? || action.blank?
 
-          begin
-            rollup_events.create!(event_id: event_id)
-          rescue ::ActiveRecord::RecordNotUnique
-            return false
-          end
+          action_type = action.sub("workflow_event.", "")
+          cost_micro  = (payload.dig(:cost, :total).to_f * 1_000_000).round
+          usage       = payload[:usage] || {}
 
           with_lock do
-            case action
-            when "workflow_event.llm"
-              cost_micro = (payload.dig(:cost, :total).to_f * 1_000_000).round
+            return false if cost_events.any? { |e| e["event_id"] == event_id }
+
+            self.cost_events = cost_events + [{
+              event_id:            event_id,
+              action_type:         action_type,
+              workflow_name:       workflow_name,
+              provider:            payload[:provider],
+              model_id:            payload[:modelId],
+              url:                 payload[:url],
+              cost_micro_usd:      cost_micro,
+              input_tokens:        usage[:inputTokens].to_i,
+              output_tokens:       usage[:outputTokens].to_i,
+              cached_input_tokens: usage[:cachedInputTokens].to_i,
+              reasoning_tokens:    usage[:reasoningTokens].to_i,
+              total_tokens:        usage[:totalTokens].to_i,
+              duration_ms:         payload[:durationMs],
+              occurred_at:         Time.current.utc.iso8601
+            }]
+
+            case action_type
+            when "llm"
               increment :total_cost_micro_usd,      cost_micro
               increment :total_llm_cost_micro_usd,  cost_micro
-              increment :total_tokens,              payload.dig(:usage, :totalTokens).to_i
-              increment :total_input_tokens,        payload.dig(:usage, :inputTokens).to_i
-              increment :total_output_tokens,       payload.dig(:usage, :outputTokens).to_i
-              increment :total_cached_input_tokens, payload.dig(:usage, :cachedInputTokens).to_i
-              increment :total_reasoning_tokens,    payload.dig(:usage, :reasoningTokens).to_i
-              save!
-            when "workflow_event.http_cost"
-              cost_micro = (payload.dig(:cost, :total).to_f * 1_000_000).round
+              increment :total_tokens,              usage[:totalTokens].to_i
+              increment :total_input_tokens,        usage[:inputTokens].to_i
+              increment :total_output_tokens,       usage[:outputTokens].to_i
+              increment :total_cached_input_tokens, usage[:cachedInputTokens].to_i
+              increment :total_reasoning_tokens,    usage[:reasoningTokens].to_i
+            when "http_cost"
               increment :total_cost_micro_usd,      cost_micro
               increment :total_http_cost_micro_usd, cost_micro
-              save!
-            when "workflow_event.http"
+            when "http"
               increment :total_http_calls, 1
-              save!
             end
+            save!
           end
-
           true
         end
 
         def cost_payload
           return nil unless has_cost_data?
-
           {
             total_cost_usd: total_cost_micro_usd / 1_000_000.0,
             total_http_calls: total_http_calls,
