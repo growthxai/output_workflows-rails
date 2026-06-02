@@ -107,6 +107,22 @@ module OutputWorkflows
         assert_equal 0,      @execution.total_http_calls
       end
 
+      test "http action_type writes cost_micro_usd: 0 in JSONB even when payload has cost" do
+        result = @execution.apply_cost_event!(
+          "event_id" => "evt_http_cost",
+          "action"   => "workflow_event.http",
+          "cost"     => { "total" => 0.001 },
+          "url"      => "https://api.example.com/things"
+        )
+        @execution.reload
+
+        assert_equal true, result
+        entry = @execution.cost_events.first
+        assert_equal 0, entry["cost_micro_usd"]
+        assert_equal 0, @execution.total_cost_micro_usd
+        assert_equal 1, @execution.total_http_calls
+      end
+
       test "http event appends one cost_events entry and increments total_http_calls only" do
         result = @execution.apply_cost_event!(http_event(id: "evt_h2"))
         @execution.reload

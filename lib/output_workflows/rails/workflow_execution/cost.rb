@@ -11,8 +11,6 @@ module OutputWorkflows
       # to perform an idempotent, row-locked increment of the cost columns and
       # append the per-event detail to the `cost_events` JSONB array.
       module Cost
-        extend ActiveSupport::Concern
-
         # Apply a single cost event to the execution row.
         #
         # Idempotent on event_id via membership check on the cost_events
@@ -26,6 +24,7 @@ module OutputWorkflows
 
           action_type = action.sub("workflow_event.", "")
           cost_micro  = (payload.dig(:cost, :total).to_f * 1_000_000).round
+          entry_cost_micro = action_type == "http" ? 0 : cost_micro
           usage       = payload[:usage] || {}
 
           with_lock do
@@ -38,7 +37,7 @@ module OutputWorkflows
               provider:            payload[:provider],
               model_id:            payload[:modelId],
               url:                 payload[:url],
-              cost_micro_usd:      cost_micro,
+              cost_micro_usd:      entry_cost_micro,
               input_tokens:        usage[:inputTokens].to_i,
               output_tokens:       usage[:outputTokens].to_i,
               cached_input_tokens: usage[:cachedInputTokens].to_i,
