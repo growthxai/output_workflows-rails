@@ -39,7 +39,7 @@ class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord:
       t.integer :total_cached_input_tokens,  default: 0,  null: false
       t.integer :total_reasoning_tokens,     default: 0,  null: false
 
-      t.jsonb   :cost_events,                default: [], null: false
+      t.jsonb   :events,                     default: [], null: false
 
       t.timestamps
     end

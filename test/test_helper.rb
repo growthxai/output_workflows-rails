@@ -48,7 +48,7 @@ ActiveRecord::Schema.define do
     t.integer :total_output_tokens,        null: false, default: 0
     t.integer :total_cached_input_tokens,  null: false, default: 0
     t.integer :total_reasoning_tokens,     null: false, default: 0
-    t.text    :cost_events
+    t.text    :events
     t.timestamps
   end
 end
@@ -59,6 +59,6 @@ require "output_workflows/rails/webhook_processor"
 # Sqlite doesn't speak jsonb, so the schema above stores jsonb-backed columns
 # as text. Serialize them as JSON so tests exercise the same hash-in/hash-out
 # shape that Postgres's jsonb adapter provides in production.
-OutputWorkflows::Rails::WorkflowExecution.serialize :cost_events, coder: JSON, type: Array, default: []
+OutputWorkflows::Rails::WorkflowExecution.serialize :events, coder: JSON, type: Array, default: []
 OutputWorkflows::Rails::WorkflowExecution.serialize :progress, coder: JSON
 OutputWorkflows::Rails::WorkflowExecution.serialize :input_params, coder: JSON

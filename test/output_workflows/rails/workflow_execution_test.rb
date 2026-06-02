@@ -50,7 +50,7 @@ module OutputWorkflows
       end
 
       test "includes cost block when rollup data present" do
-        @execution.apply_cost_event!(
+        @execution.append_event(
           "event_id" => "evt_ser",
           "action"   => "workflow_event.llm",
           "cost"     => { "total" => 0.1 },

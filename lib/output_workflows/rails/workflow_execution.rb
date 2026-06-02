@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "workflow_execution/events"
 require_relative "workflow_execution/cost"
 
 module OutputWorkflows
@@ -7,6 +8,7 @@ module OutputWorkflows
     class WorkflowExecution < ::ActiveRecord::Base
       self.table_name = OutputWorkflows.configuration.table_name
 
+      include OutputWorkflows::Rails::WorkflowExecution::Events
       include OutputWorkflows::Rails::WorkflowExecution::Cost
 
       belongs_to :executable, polymorphic: true, optional: true
@@ -154,7 +156,7 @@ module OutputWorkflows
       end
 
       # Mark this execution completed. State-only transition — cost data
-      # arrives via per-event webhooks (`apply_cost_event!`), not from the
+      # arrives via per-event webhooks (`append_event`), not from the
       # workflow result envelope.
       def mark_completed!
         return if terminal?
