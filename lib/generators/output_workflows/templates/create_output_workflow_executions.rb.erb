@@ -27,12 +27,19 @@ class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord:
       t.datetime :started_at
       t.datetime :completed_at
 
-      # Cost rollup (populated by WorkflowExecution#apply_workflow_result!)
-      t.bigint  :total_cost_micro_usd, default: 0,  null: false
-      t.bigint  :total_tokens,         default: 0,  null: false
-      t.integer :total_http_calls,     default: 0,  null: false
-      t.jsonb   :cost_data,            default: {}, null: false
-      t.jsonb   :attributes_data,      default: [], null: false
+      t.bigint  :total_cost_micro_usd,       default: 0,  null: false
+
+      t.bigint  :total_http_cost_micro_usd,  default: 0,  null: false
+      t.integer :total_http_calls,           default: 0,  null: false
+
+      t.bigint  :total_llm_cost_micro_usd,   default: 0,  null: false
+      t.bigint  :total_tokens,               default: 0,  null: false
+      t.integer :total_input_tokens,         default: 0,  null: false
+      t.integer :total_output_tokens,        default: 0,  null: false
+      t.integer :total_cached_input_tokens,  default: 0,  null: false
+      t.integer :total_reasoning_tokens,     default: 0,  null: false
+
+      t.jsonb   :cost_events,                default: [], null: false
 
       t.timestamps
     end
