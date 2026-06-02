@@ -1,52 +1,25 @@
 ## [Unreleased]
 
-## [0.7.0] - 2026-06-01
+## [0.6.0] - 2026-06-01
 
-**JSONB per-event cost log + drop dedup table**
+**Per-event cost hooks + JSONB log**
 
-- **BREAKING**: Drop the `WorkflowExecution::RollupEvent` AR model and the
-  `output_workflow_execution_events` dedup table. Per-event detail is now
-  stored on `output_workflow_executions.cost_events` (a JSONB array column)
-  and dedup happens via in-memory membership check on that array, inside
-  `with_lock`. Hosts that mirrored this data into their own table can drop
-  it and query the JSONB column directly.
-- **BREAKING**: Drop the unused `cost_data` and `attributes_data` JSONB
-  columns from the install migration. Existing installs can drop them with
-  a follow-up migration.
-- **BREAKING**: `WorkflowExecution#mark_completed!` no longer accepts a
-  `result:` kwarg. Cost arrives via per-event webhooks, so the lifecycle
-  method is state-only.
-- `apply_cost_event!` now appends a rich per-event entry to `cost_events`
-  with `event_id`, `action_type`, `workflow_name`, `provider`, `model_id`,
-  `url`, `cost_micro_usd`, all token counts, `duration_ms`, and
-  `occurred_at`. Rollup column behavior is unchanged.
-- Drop the `require_relative` glue in `workflow_execution.rb`; the Cost
-  module is included directly inside the class body. Hosts using Rails
-  autoload / Zeitwerk see no behavior change.
-
-## [0.6.0] - 2026-05-29
-
-**Per-event cost hooks**
-
-- **BREAKING**: `WorkflowExecution#apply_workflow_result` is removed.
-  `mark_completed!` is state-only (status + completed_at). Cost data is now
-  written from per-event webhooks instead of the Output API result envelope.
-- Add `WorkflowExecution::Cost#apply_cost_event!(payload)` — idempotent,
-  row-locked increment driven by `workflow_event.llm`,
-  `workflow_event.http_cost`, and `workflow_event.http` actions. Rolls up both
-  the totals (`total_cost_micro_usd`, `total_tokens`, `total_http_calls`) and
-  per-attribute breakdowns (`total_llm_cost_micro_usd`,
+- **BREAKING**: Replace `WorkflowExecution#apply_workflow_result` with
+  per-event `apply_cost_event!(payload)`. Idempotent, row-locked,
+  dispatches on `workflow_event.llm` / `workflow_event.http_cost` /
+  `workflow_event.http`.
+- **BREAKING**: `mark_completed!` is state-only — no `result:` kwarg. Guards
+  against clobbering a prior `failed` state.
+- Per-event detail lives on `output_workflow_executions.cost_events` (a
+  JSONB array). Dedup is in-memory membership check inside `with_lock`.
+- Adds 6 breakdown rollup columns: `total_llm_cost_micro_usd`,
   `total_http_cost_micro_usd`, `total_input_tokens`, `total_output_tokens`,
-  `total_cached_input_tokens`, `total_reasoning_tokens`) from
-  `payload.cost.total` and `payload.usage.*`.
-- Add `WorkflowExecution::RollupEvent` AR class backing a new
-  `output_workflow_execution_events` dedup table. Dedup is keyed by
-  `(workflow_execution_id, event_id)` — repeat events return `false`.
-- `cost_payload` now sources `token_usage` (including `reasoning_tokens`) and
-  `cost_components` directly from the rollup columns. Legacy
-  `cost_components_from_attributes` and `sum_usage_tokens` are removed.
-- Install generator ships the new breakdown columns + the dedup-table
-  migration. Existing installs add them manually (see README).
+  `total_cached_input_tokens`, `total_reasoning_tokens`.
+- Drops the unused `cost_data` and `attributes_data` columns from the
+  install migration.
+- `cost_payload` sources `token_usage` and `cost_components` from rollup
+  columns. Legacy `cost_components_from_attributes` / `sum_usage_tokens` /
+  the dedup-table model are removed.
 
 ## [0.5.0] - 2026-05-22
 

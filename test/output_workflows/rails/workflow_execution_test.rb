@@ -62,6 +62,17 @@ module OutputWorkflows
         assert_in_delta 0.1, hash["cost"][:total_cost_usd], 1e-9
         assert_equal 7, hash["cost"][:token_usage][:total_tokens]
       end
+
+      test "mark_completed! does not clobber a prior failed state" do
+        @execution.mark_failed!("boom")
+        assert_equal "failed", @execution.status
+        assert_equal "boom",   @execution.error_message
+
+        @execution.mark_completed!
+
+        assert_equal "failed", @execution.status,        "status was flipped from failed to completed"
+        assert_equal "boom",   @execution.error_message, "error_message was clobbered"
+      end
     end
   end
 end

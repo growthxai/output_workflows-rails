@@ -157,6 +157,7 @@ module OutputWorkflows
       # arrives via per-event webhooks (`apply_cost_event!`), not from the
       # workflow result envelope.
       def mark_completed!
+        return if terminal?
         update!(status: :completed, completed_at: Time.current)
       end
 
