@@ -1,5 +1,26 @@
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-01
+
+**Per-event cost hooks + JSONB log**
+
+- **BREAKING**: Replace `WorkflowExecution#apply_workflow_result` with
+  per-event `append_event(payload)`. Idempotent, row-locked,
+  dispatches on `workflow_event.llm` / `workflow_event.http_cost` /
+  `workflow_event.http`.
+- **BREAKING**: `mark_completed!` is state-only — no `result:` kwarg. Guards
+  against clobbering a prior `failed` state.
+- Per-event detail lives on `output_workflow_executions.events` (a
+  JSONB array). Dedup is in-memory membership check inside `with_lock`.
+- Adds 6 breakdown rollup columns: `total_llm_cost_micro_usd`,
+  `total_http_cost_micro_usd`, `total_input_tokens`, `total_output_tokens`,
+  `total_cached_input_tokens`, `total_reasoning_tokens`.
+- Drops the unused `cost_data` and `attributes_data` columns from the
+  install migration.
+- `cost_payload` sources `token_usage` and `cost_components` from rollup
+  columns. Legacy `cost_components_from_attributes` / `sum_usage_tokens` /
+  the dedup-table model are removed.
+
 ## [0.5.0] - 2026-05-22
 
 **Cost rollup**
