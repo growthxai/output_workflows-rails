@@ -6,7 +6,7 @@ module OutputWorkflows
   class Client
     attr_reader :configuration
 
-    def initialize(api_url: nil, api_key: nil, **options)
+    def initialize(api_url: nil, api_key: nil, **_options)
       @configuration = OutputWorkflows.configuration.dup
       @configuration.api_url = api_url if api_url
       @configuration.api_key = api_key if api_key
@@ -63,20 +63,26 @@ module OutputWorkflows
       handle_faraday_error("get history for #{workflow_label(workflow_id, run_id)}", e)
     end
 
-    # Cancel/stop a running workflow. Returns true if cancelled, false if it doesn't exist.
+    # Statuses the stop endpoint returns when the run can't be stopped because
+    # it's already in a terminal-ish state: invalid stop on a finished run
+    # (400), already cancelled/conflicting (409), gone (404), expired (410).
+    # These are functionally "already stopped". Other client errors (401 auth,
+    # 403 forbidden, 408 timeout, 429 rate limit) are real failures that should
+    # surface, not be silently swallowed as a successful no-op.
+    ALREADY_STOPPED_STATUSES = [400, 404, 409, 410].freeze
+
+    # Cancel/stop a running workflow. Returns true if cancelled, false if it was
+    # already in a state that can't be stopped (see ALREADY_STOPPED_STATUSES).
     def cancel_workflow(workflow_id, run_id: nil)
       connection.patch(run_scoped_path(workflow_id, "stop", run_id))
       true
-    rescue Faraday::ResourceNotFound, Faraday::ClientError => e
-      status = e.response_status if e.respond_to?(:response_status)
-      if [404, 410].include?(status)
-        log_info("#{workflow_label(workflow_id, run_id).capitalize} already stopped (#{status})")
-        false
-      else
-        raise
-      end
     rescue Faraday::Error => e
-      handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e)
+      status = e.response_status if e.respond_to?(:response_status)
+      return handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e) unless
+        ALREADY_STOPPED_STATUSES.include?(status)
+
+      log_info("#{workflow_label(workflow_id, run_id).capitalize} already stopped (#{status})")
+      false
     end
 
     # Wait for workflow completion by polling status.
@@ -89,9 +95,7 @@ module OutputWorkflows
 
       loop do
         elapsed = Time.now - start_time
-        if elapsed > timeout
-          raise TimeoutError, "Workflow #{workflow_id} timed out after #{timeout} seconds"
-        end
+        raise TimeoutError, "Workflow #{workflow_id} timed out after #{timeout} seconds" if elapsed > timeout
 
         status_response = workflow_status(workflow_id, run_id: run_id)
         raise WorkflowNotFoundError, "Workflow #{workflow_id} not found" unless status_response
@@ -168,9 +172,9 @@ module OutputWorkflows
     end
 
     def log_info(message)
-      if defined?(::Rails)
-        ::Rails.logger.info(message)
-      end
+      return unless defined?(::Rails)
+
+      ::Rails.logger.info(message)
     end
   end
 end
