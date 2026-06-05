@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-05
+
+**Tolerate un-stoppable runs on cancel**
+
+- `Client#cancel_workflow` wraps an unexpected stop `4xx` (e.g. a `400` for a
+  legacy / non-existent run) as `OutputWorkflows::APIError` instead of
+  re-raising the raw Faraday error. `WorkflowExecution#cancel!` already rescues
+  `APIError`, so it now marks the stale execution failed locally and lets a new
+  dispatch proceed instead of crashing the dispatching job (COS-1141).
+
 ## [0.6.0] - 2026-06-01
 
 **Per-event cost hooks + JSONB log**
