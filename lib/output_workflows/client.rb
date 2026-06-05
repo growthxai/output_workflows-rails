@@ -73,7 +73,7 @@ module OutputWorkflows
         log_info("#{workflow_label(workflow_id, run_id).capitalize} already stopped (#{status})")
         false
       else
-        raise
+        handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e)
       end
     rescue Faraday::Error => e
       handle_faraday_error("cancel #{workflow_label(workflow_id, run_id)}", e)

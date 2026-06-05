@@ -76,6 +76,19 @@ class TestClient < Minitest::Test
     assert_requested :patch, "http://test.local/workflow/wf_abc/runs/run_xyz/stop"
   end
 
+  # A stop that the API rejects with a non-gone 4xx (e.g. 400 for a legacy run)
+  # must surface as a wrapped APIError, not a raw Faraday error — otherwise
+  # WorkflowExecution#cancel! can't rescue it and the dispatch job crashes.
+  def test_cancel_workflow_wraps_unexpected_4xx_as_api_error
+    stub_request(:patch, "http://test.local/workflow/wf_abc/runs/legacy-123/stop")
+      .to_return(status: 400, body: '{"error":"cannot stop run"}',
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_raises(OutputWorkflows::APIError) do
+      @client.cancel_workflow("wf_abc", run_id: "legacy-123")
+    end
+  end
+
   # --- workflow_result -------------------------------------------------------
 
   def test_workflow_result_without_run_id_hits_unpinned_endpoint
