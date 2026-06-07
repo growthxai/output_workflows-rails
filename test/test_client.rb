@@ -35,6 +35,24 @@ class TestClient < Minitest::Test
     end
   end
 
+  def test_start_workflow_wraps_a_timeout_as_api_error_with_nil_status
+    stub_request(:post, "http://test.local/workflow/start").to_timeout
+
+    error = assert_raises(OutputWorkflows::APIError) do
+      @client.start_workflow("my_workflow", { foo: "bar" })
+    end
+
+    # No HTTP response on a timeout — consumers treat nil status as transient/retryable.
+    assert_nil error.response_status
+  end
+
+  def test_connection_sets_request_and_open_timeouts
+    client = OutputWorkflows::Client.new(api_url: "http://test.local")
+
+    assert_equal client.configuration.request_timeout, client.connection.options.timeout
+    assert_equal client.configuration.open_timeout, client.connection.options.open_timeout
+  end
+
   # --- workflow_status -------------------------------------------------------
 
   def test_workflow_status_without_run_id_hits_unpinned_endpoint
