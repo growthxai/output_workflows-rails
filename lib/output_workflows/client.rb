@@ -114,6 +114,10 @@ module OutputWorkflows
     # HTTP connection
     def connection
       @connection ||= Faraday.new(url: configuration.api_url) do |faraday|
+        # Fail fast on a hung/unreachable API instead of blocking the caller
+        # forever; a timeout surfaces as Faraday::Error → APIError (nil status).
+        faraday.options.timeout = configuration.request_timeout
+        faraday.options.open_timeout = configuration.open_timeout
         faraday.request :json
         faraday.headers["Authorization"] = "Basic #{configuration.api_key}" if configuration.api_key
         faraday.response :json
@@ -126,51 +130,50 @@ module OutputWorkflows
     end
 
     private
-
-    def run_scoped_path(workflow_id, action, run_id)
-      run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/#{action}" : "/workflow/#{workflow_id}/#{action}"
-    end
-
-    def workflow_label(workflow_id, run_id)
-      run_id ? "workflow #{workflow_id} run #{run_id}" : "workflow #{workflow_id}"
-    end
-
-    def build_workflow_params(workflow_name, input, **options)
-      params = {
-        workflow_name: workflow_name,
-        input: input
-      }
-
-      # Add task_queue if explicitly provided
-      params[:task_queue] = options[:task_queue] if options[:task_queue]
-
-      # Convert keys to camelCase for API
-      deep_transform_keys_to_camel_case(params)
-    end
-
-    def deep_transform_keys_to_camel_case(hash)
-      hash.each_with_object({}) do |(key, value), result|
-        new_key = key.to_s.gsub(/_([a-z])/) { ::Regexp.last_match(1).upcase }
-        new_value = value.is_a?(Hash) ? deep_transform_keys_to_camel_case(value) : value
-        result[new_key] = new_value
+      def run_scoped_path(workflow_id, action, run_id)
+        run_id ? "/workflow/#{workflow_id}/runs/#{run_id}/#{action}" : "/workflow/#{workflow_id}/#{action}"
       end
-    end
 
-    def handle_faraday_error(action, error)
-      status = error.response_status if error.respond_to?(:response_status)
-      body = error.response_body if error.respond_to?(:response_body)
-
-      raise OutputWorkflows::APIError.new(
-        "Failed to #{action}: #{error.message}",
-        response_status: status,
-        response_body: body
-      )
-    end
-
-    def log_info(message)
-      if defined?(::Rails)
-        ::Rails.logger.info(message)
+      def workflow_label(workflow_id, run_id)
+        run_id ? "workflow #{workflow_id} run #{run_id}" : "workflow #{workflow_id}"
       end
-    end
+
+      def build_workflow_params(workflow_name, input, **options)
+        params = {
+          workflow_name: workflow_name,
+          input: input
+        }
+
+        # Add task_queue if explicitly provided
+        params[:task_queue] = options[:task_queue] if options[:task_queue]
+
+        # Convert keys to camelCase for API
+        deep_transform_keys_to_camel_case(params)
+      end
+
+      def deep_transform_keys_to_camel_case(hash)
+        hash.each_with_object({}) do |(key, value), result|
+          new_key = key.to_s.gsub(/_([a-z])/) { ::Regexp.last_match(1).upcase }
+          new_value = value.is_a?(Hash) ? deep_transform_keys_to_camel_case(value) : value
+          result[new_key] = new_value
+        end
+      end
+
+      def handle_faraday_error(action, error)
+        status = error.response_status if error.respond_to?(:response_status)
+        body = error.response_body if error.respond_to?(:response_body)
+
+        raise OutputWorkflows::APIError.new(
+          "Failed to #{action}: #{error.message}",
+          response_status: status,
+          response_body: body
+        )
+      end
+
+      def log_info(message)
+        if defined?(::Rails)
+          ::Rails.logger.info(message)
+        end
+      end
   end
 end
