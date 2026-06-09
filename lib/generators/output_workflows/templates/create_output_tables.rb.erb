@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+class CreateOutputTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
   def change
     create_table :output_workflow_executions, id: :uuid do |t|
       # Polymorphic association (optional)
@@ -43,5 +43,31 @@ class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord:
 
       t.timestamps
     end
+
+    create_table :output_workflow_execution_events, id: :uuid do |t|
+      t.references :execution, type: :uuid, null: false,
+                   foreign_key: { to_table: :output_workflow_executions, on_delete: :cascade }
+
+      t.string  :event_id,      null: false
+      t.string  :action_type,   null: false
+      t.string  :workflow_name, null: false
+      t.string  :provider
+      t.string  :model_id
+      t.string  :url
+
+      t.bigint  :cost_micro_usd,      default: 0, null: false
+      t.integer :input_tokens,        default: 0, null: false
+      t.integer :output_tokens,       default: 0, null: false
+      t.integer :cached_input_tokens, default: 0, null: false
+      t.integer :reasoning_tokens,    default: 0, null: false
+      t.bigint  :total_tokens,        default: 0, null: false
+
+      t.integer  :duration_ms
+      t.datetime :occurred_at, null: false
+
+      t.timestamps
+    end
+
+    add_index :output_workflow_execution_events, %i[execution_id event_id], unique: true
   end
 end

@@ -20,8 +20,8 @@ module OutputWorkflows
 
       def create_migration
         migration_template(
-          "create_output_workflow_executions.rb.erb",
-          "db/migrate/create_output_workflow_executions.rb"
+          "create_output_tables.rb.erb",
+          "db/migrate/create_output_tables.rb"
         )
       end
 

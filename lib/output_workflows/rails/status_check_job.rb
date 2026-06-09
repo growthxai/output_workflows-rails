@@ -2,7 +2,7 @@
 
 module OutputWorkflows
   module Rails
-    class StatusCheckJob < ::ActiveJob::Base
+    class StatusCheckJob < ActiveJob::Base
       MAX_RETRIES = 3
       RETRY_DELAY = 10
 

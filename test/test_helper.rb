@@ -51,6 +51,26 @@ ActiveRecord::Schema.define do
     t.text    :events
     t.timestamps
   end
+
+  create_table :output_workflow_execution_events do |t|
+    t.references :execution, null: false
+    t.string  :event_id, null: false
+    t.string  :action_type, null: false
+    t.string  :workflow_name, null: false
+    t.string  :provider
+    t.string  :model_id
+    t.string  :url
+    t.bigint  :cost_micro_usd,      null: false, default: 0
+    t.integer :input_tokens,        null: false, default: 0
+    t.integer :output_tokens,       null: false, default: 0
+    t.integer :cached_input_tokens, null: false, default: 0
+    t.integer :reasoning_tokens,    null: false, default: 0
+    t.bigint  :total_tokens,        null: false, default: 0
+    t.integer :duration_ms
+    t.datetime :occurred_at, null: false
+    t.timestamps
+    t.index %i[execution_id event_id], unique: true
+  end
 end
 
 require "output_workflows/rails/workflow_execution"

@@ -2,7 +2,7 @@
 
 module OutputWorkflows
   module Rails
-    class WorkflowExecution < ::ActiveRecord::Base
+    class WorkflowExecution < ActiveRecord::Base
       # Cost rollup behavior for WorkflowExecution.
       #
       # Cost data arrives as a stream of per-event webhooks (one per LLM call,
@@ -10,24 +10,36 @@ module OutputWorkflows
       # the rollup-column increments (`apply_rollups_for`) and the read surface
       # (`cost_payload`) that frontends consume.
       module Cost
-        # Increment the rollup columns for a single event. Called from
-        # `Events#append_event` inside the `with_lock` block — does not save.
+        # Bump the rollup columns for a single event with one atomic
+        # `UPDATE ... SET col = col + n WHERE id = ?` (via `update_counters`).
+        # No `FOR UPDATE`, no dirty-attribute save — called from
+        # `Events#append_event` right after the event row is inserted.
+        # Note: this updates the database directly, so reload the record if you
+        # need the new rollup values in memory.
         def apply_rollups_for(action_type, cost_micro:, usage:)
-          case action_type
-          when "llm"
-            increment :total_cost_micro_usd,      cost_micro
-            increment :total_llm_cost_micro_usd,  cost_micro
-            increment :total_tokens,              usage[:totalTokens].to_i
-            increment :total_input_tokens,        usage[:inputTokens].to_i
-            increment :total_output_tokens,       usage[:outputTokens].to_i
-            increment :total_cached_input_tokens, usage[:cachedInputTokens].to_i
-            increment :total_reasoning_tokens,    usage[:reasoningTokens].to_i
-          when "http_cost"
-            increment :total_cost_micro_usd,      cost_micro
-            increment :total_http_cost_micro_usd, cost_micro
-          when "http"
-            increment :total_http_calls, 1
-          end
+          increments =
+            case action_type
+            when "llm"
+              {
+                total_cost_micro_usd: cost_micro,
+                total_llm_cost_micro_usd: cost_micro,
+                total_tokens: usage[:totalTokens].to_i,
+                total_input_tokens: usage[:inputTokens].to_i,
+                total_output_tokens: usage[:outputTokens].to_i,
+                total_cached_input_tokens: usage[:cachedInputTokens].to_i,
+                total_reasoning_tokens: usage[:reasoningTokens].to_i
+              }
+            when "http_cost"
+              {
+                total_cost_micro_usd: cost_micro,
+                total_http_cost_micro_usd: cost_micro
+              }
+            when "http"
+              { total_http_calls: 1 }
+            end
+
+          # Single atomic UPDATE; skipping validations is intentional here.
+          self.class.update_counters(id, increments) if increments # rubocop:disable Rails/SkipsModelValidations
         end
 
         def cost_payload
