@@ -8,7 +8,7 @@ module OutputWorkflows
 
         belongs_to :execution,
                    class_name: "OutputWorkflows::Rails::WorkflowExecution",
-                   inverse_of: :execution_events
+                   inverse_of: :events
 
         enum :action_type, %w[llm http http_cost].index_by(&:itself), validate: true
 

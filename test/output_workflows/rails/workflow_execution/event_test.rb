@@ -21,7 +21,7 @@ module OutputWorkflows
         end
 
         test "persists an event row linked to its execution" do
-          event = @execution.execution_events.create!(
+          event = @execution.events.create!(
             event_id: "evt_1",
             action_type: "llm",
             workflow_name: "context_persona_enrichment",
@@ -30,17 +30,17 @@ module OutputWorkflows
 
           assert event.persisted?
           assert_equal @execution, event.execution
-          assert_equal [event], @execution.execution_events.to_a
+          assert_equal [event], @execution.events.to_a
         end
 
         test "enforces (execution_id, event_id) uniqueness at the database level" do
-          @execution.execution_events.create!(
+          @execution.events.create!(
             event_id: "evt_dup", action_type: "llm",
             workflow_name: "wf", occurred_at: Time.current.utc
           )
 
           assert_raises ActiveRecord::RecordNotUnique do
-            @execution.execution_events.create!(
+            @execution.events.create!(
               event_id: "evt_dup", action_type: "http",
               workflow_name: "wf", occurred_at: Time.current.utc
             )
@@ -52,13 +52,13 @@ module OutputWorkflows
             workflow_id: "wf_other", workflow_run_id: "run_other",
             workflow_name: "wf", status: "pending"
           )
-          @execution.execution_events.create!(
+          @execution.events.create!(
             event_id: "evt_shared", action_type: "llm",
             workflow_name: "wf", occurred_at: Time.current.utc
           )
 
           assert_nothing_raised do
-            other.execution_events.create!(
+            other.events.create!(
               event_id: "evt_shared", action_type: "llm",
               workflow_name: "wf", occurred_at: Time.current.utc
             )
@@ -66,7 +66,7 @@ module OutputWorkflows
         end
 
         test "rejects an unknown action_type" do
-          event = @execution.execution_events.build(
+          event = @execution.events.build(
             event_id: "e_bad", action_type: "telepathy",
             workflow_name: "wf", occurred_at: Time.current.utc
           )

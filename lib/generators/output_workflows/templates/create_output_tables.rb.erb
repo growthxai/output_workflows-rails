@@ -39,8 +39,6 @@ class CreateOutputTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.c
       t.integer :total_cached_input_tokens,  default: 0,  null: false
       t.integer :total_reasoning_tokens,     default: 0,  null: false
 
-      t.jsonb   :events,                     default: [], null: false
-
       t.timestamps
     end
 
