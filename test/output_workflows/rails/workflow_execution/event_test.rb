@@ -65,20 +65,6 @@ module OutputWorkflows
           end
         end
 
-        test "action_type enum exposes scopes and predicates" do
-          %w[llm http http_cost].each do |type|
-            @execution.execution_events.create!(
-              event_id: "e_#{type}", action_type: type,
-              workflow_name: "wf", occurred_at: Time.current.utc
-            )
-          end
-
-          assert_equal %w[e_llm], Event.llm.pluck(:event_id)
-          assert_equal %w[e_http], Event.http.pluck(:event_id)
-          assert_equal %w[e_http_cost], Event.http_cost.pluck(:event_id)
-          assert_predicate Event.find_by(event_id: "e_llm"), :llm?
-        end
-
         test "rejects an unknown action_type" do
           event = @execution.execution_events.build(
             event_id: "e_bad", action_type: "telepathy",

@@ -6,7 +6,7 @@ require_relative "workflow_execution/cost"
 
 module OutputWorkflows
   module Rails
-    class WorkflowExecution < ::ActiveRecord::Base
+    class WorkflowExecution < ActiveRecord::Base
       self.table_name = OutputWorkflows.configuration.table_name
 
       include OutputWorkflows::Rails::WorkflowExecution::Events
@@ -14,10 +14,6 @@ module OutputWorkflows
 
       belongs_to :executable, polymorphic: true, optional: true
 
-      # Per-event log rows (see WorkflowExecution::Event). Named
-      # `execution_events` rather than `events` because the legacy `events`
-      # JSONB column still exists during the transition; renamed to `events`
-      # once that column is dropped.
       has_many :execution_events,
                class_name: "OutputWorkflows::Rails::WorkflowExecution::Event",
                foreign_key: :execution_id,

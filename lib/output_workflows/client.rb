@@ -150,7 +150,7 @@ module OutputWorkflows
 
     def deep_transform_keys_to_camel_case(hash)
       hash.each_with_object({}) do |(key, value), result|
-        new_key = key.to_s.gsub(/_([a-z])/) { ::Regexp.last_match(1).upcase }
+        new_key = key.to_s.gsub(/_([a-z])/) { Regexp.last_match(1).upcase }
         new_value = value.is_a?(Hash) ? deep_transform_keys_to_camel_case(value) : value
         result[new_key] = new_value
       end

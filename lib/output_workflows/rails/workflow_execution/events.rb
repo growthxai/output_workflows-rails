@@ -2,22 +2,10 @@
 
 module OutputWorkflows
   module Rails
-    class WorkflowExecution < ::ActiveRecord::Base
-      # Append-only event log for the execution. Each call inserts one row into
-      # `output_workflow_execution_events` (see WorkflowExecution::Event) and
-      # atomically bumps the rollup columns via `Cost#apply_rollups_for`.
-      #
-      # Each event is one webhook (LLM call, HTTP call, etc.) from the
-      # workflow's runtime. Dedup is enforced by the `UNIQUE (execution_id,
-      # event_id)` index — a duplicate INSERT raises `RecordNotUnique`, which we
-      # swallow and return false for. The INSERT + rollup run in one transaction
-      # so a duplicate rolls back without double-counting; there is no
-      # `FOR UPDATE` on the parent row and no JSONB array rewrite.
+    class WorkflowExecution < ActiveRecord::Base
       module Events
         extend ActiveSupport::Concern
 
-        # Record one webhook event. Idempotent on event_id. Returns true on
-        # first apply, false on duplicate or missing required fields.
         def append_event(payload)
           payload  = payload.with_indifferent_access
           event_id = payload[:event_id].presence || payload[:eventId].presence

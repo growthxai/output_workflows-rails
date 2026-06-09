@@ -2,7 +2,7 @@
 
 module OutputWorkflows
   module Rails
-    class WorkflowExecution < ::ActiveRecord::Base
+    class WorkflowExecution < ActiveRecord::Base
       # Cost rollup behavior for WorkflowExecution.
       #
       # Cost data arrives as a stream of per-event webhooks (one per LLM call,
