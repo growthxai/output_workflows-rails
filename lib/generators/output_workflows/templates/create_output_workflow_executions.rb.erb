@@ -43,5 +43,35 @@ class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord:
 
       t.timestamps
     end
+
+    # Append-only per-event log (LLM/HTTP calls). Events are inserted here, not
+    # appended to a JSONB array on the parent row — avoids the FOR UPDATE lock
+    # convoy and O(n^2) array rewrites under high fan-out. Dedup is enforced by
+    # the UNIQUE (execution_id, event_id) index.
+    create_table :output_workflow_execution_events, id: :uuid do |t|
+      t.references :execution, type: :uuid, null: false,
+                   foreign_key: { to_table: :output_workflow_executions, on_delete: :cascade }
+
+      t.string  :event_id,      null: false
+      t.string  :action_type,   null: false
+      t.string  :workflow_name, null: false
+      t.string  :provider
+      t.string  :model_id
+      t.string  :url
+
+      t.bigint  :cost_micro_usd,      default: 0, null: false
+      t.integer :input_tokens,        default: 0, null: false
+      t.integer :output_tokens,       default: 0, null: false
+      t.integer :cached_input_tokens, default: 0, null: false
+      t.integer :reasoning_tokens,    default: 0, null: false
+      t.bigint  :total_tokens,        default: 0, null: false
+
+      t.integer  :duration_ms
+      t.datetime :occurred_at, null: false
+
+      t.timestamps
+    end
+
+    add_index :output_workflow_execution_events, %i[execution_id event_id], unique: true
   end
 end

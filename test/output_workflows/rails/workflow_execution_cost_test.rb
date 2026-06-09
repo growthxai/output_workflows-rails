@@ -39,23 +39,23 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal true, result
-        assert_equal 1, @execution.events.length
+        assert_equal 1, @execution.execution_events.count
 
-        entry = @execution.events.first
-        assert_equal "evt_1",                                       entry["event_id"]
-        assert_equal "llm",                                         entry["action_type"]
-        assert_equal "context_persona_enrichment",                  entry["workflow_name"]
-        assert_equal "openai",                                      entry["provider"]
-        assert_equal "gpt-4o",                                      entry["model_id"]
-        assert_equal "https://api.openai.com/v1/chat/completions",  entry["url"]
-        assert_equal 123_456,                                       entry["cost_micro_usd"]
-        assert_equal 800,                                           entry["input_tokens"]
-        assert_equal 400,                                           entry["output_tokens"]
-        assert_equal 34,                                            entry["cached_input_tokens"]
-        assert_equal 12,                                            entry["reasoning_tokens"]
-        assert_equal 1_234,                                         entry["total_tokens"]
-        assert_equal 1_500,                                         entry["duration_ms"]
-        refute_nil entry["occurred_at"]
+        entry = @execution.execution_events.first
+        assert_equal "evt_1",                                       entry.event_id
+        assert_equal "llm",                                         entry.action_type
+        assert_equal "context_persona_enrichment",                  entry.workflow_name
+        assert_equal "openai",                                      entry.provider
+        assert_equal "gpt-4o",                                      entry.model_id
+        assert_equal "https://api.openai.com/v1/chat/completions",  entry.url
+        assert_equal 123_456,                                       entry.cost_micro_usd
+        assert_equal 800,                                           entry.input_tokens
+        assert_equal 400,                                           entry.output_tokens
+        assert_equal 34,                                            entry.cached_input_tokens
+        assert_equal 12,                                            entry.reasoning_tokens
+        assert_equal 1_234,                                         entry.total_tokens
+        assert_equal 1_500,                                         entry.duration_ms
+        refute_nil entry.occurred_at
       end
 
       test "llm event increments all 7 llm rollups" do
@@ -88,13 +88,13 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal true, result
-        assert_equal 1, @execution.events.length
+        assert_equal 1, @execution.execution_events.count
 
-        entry = @execution.events.first
-        assert_equal "evt_h",     entry["event_id"]
-        assert_equal "http_cost", entry["action_type"]
-        assert_equal 50_000,      entry["cost_micro_usd"]
-        assert_equal 0,           entry["total_tokens"]
+        entry = @execution.execution_events.first
+        assert_equal "evt_h",     entry.event_id
+        assert_equal "http_cost", entry.action_type
+        assert_equal 50_000,      entry.cost_micro_usd
+        assert_equal 0,           entry.total_tokens
 
         assert_equal 50_000, @execution.total_cost_micro_usd
         assert_equal 0,      @execution.total_llm_cost_micro_usd
@@ -107,7 +107,7 @@ module OutputWorkflows
         assert_equal 0,      @execution.total_http_calls
       end
 
-      test "http action_type writes cost_micro_usd: 0 in JSONB even when payload has cost" do
+      test "http action_type records cost_micro_usd: 0 on the event row even when payload has cost" do
         result = @execution.append_event(
           "event_id" => "evt_http_cost",
           "action"   => "workflow_event.http",
@@ -117,8 +117,8 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal true, result
-        entry = @execution.events.first
-        assert_equal 0, entry["cost_micro_usd"]
+        entry = @execution.execution_events.first
+        assert_equal 0, entry.cost_micro_usd
         assert_equal 0, @execution.total_cost_micro_usd
         assert_equal 1, @execution.total_http_calls
       end
@@ -128,11 +128,11 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal true, result
-        assert_equal 1, @execution.events.length
+        assert_equal 1, @execution.execution_events.count
 
-        entry = @execution.events.first
-        assert_equal "evt_h2", entry["event_id"]
-        assert_equal "http",   entry["action_type"]
+        entry = @execution.execution_events.first
+        assert_equal "evt_h2", entry.event_id
+        assert_equal "http",   entry.action_type
 
         assert_equal 0, @execution.total_cost_micro_usd
         assert_equal 0, @execution.total_llm_cost_micro_usd
@@ -152,7 +152,7 @@ module OutputWorkflows
 
         assert_equal true,  first
         assert_equal false, dup
-        assert_equal 1, @execution.events.length
+        assert_equal 1, @execution.execution_events.count
         assert_equal 100_000, @execution.total_cost_micro_usd
         assert_equal 100_000, @execution.total_llm_cost_micro_usd
         assert_equal 100,     @execution.total_tokens
@@ -171,8 +171,8 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal true, result
-        assert_equal 1, @execution.events.length
-        assert_equal "evt_camel", @execution.events.first["event_id"]
+        assert_equal 1, @execution.execution_events.count
+        assert_equal "evt_camel", @execution.execution_events.first.event_id
         assert_equal 50_000, @execution.total_cost_micro_usd
         assert_equal 42,     @execution.total_tokens
       end
@@ -186,7 +186,7 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal false, result
-        assert_equal 0, @execution.events.length
+        assert_equal 0, @execution.execution_events.count
         assert_equal 0, @execution.total_cost_micro_usd
         assert_equal 0, @execution.total_tokens
       end
@@ -199,7 +199,7 @@ module OutputWorkflows
         @execution.reload
 
         assert_equal false, result
-        assert_equal 0, @execution.events.length
+        assert_equal 0, @execution.execution_events.count
         assert_equal 0, @execution.total_cost_micro_usd
       end
 
@@ -211,7 +211,7 @@ module OutputWorkflows
         @execution.append_event(http_cost_event(id: "evt_e", cost: 0.01))
         @execution.reload
 
-        assert_equal 5, @execution.events.length
+        assert_equal 5, @execution.execution_events.count
         assert_equal 360_000, @execution.total_cost_micro_usd
         assert_equal 350_000, @execution.total_llm_cost_micro_usd
         assert_equal 10_000,  @execution.total_http_cost_micro_usd
@@ -297,7 +297,7 @@ module OutputWorkflows
         refute_nil @execution.completed_at
         assert_equal 100_000, @execution.total_cost_micro_usd
         assert_equal 100,     @execution.total_tokens
-        assert_equal 1,       @execution.events.length
+        assert_equal 1,       @execution.execution_events.count
       end
 
       private

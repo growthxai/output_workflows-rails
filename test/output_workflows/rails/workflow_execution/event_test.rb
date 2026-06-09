@@ -1,0 +1,93 @@
+# frozen_string_literal: true
+
+require "test_helper"
+require "active_support/test_case"
+
+module OutputWorkflows
+  module Rails
+    class WorkflowExecution
+      class EventTest < ActiveSupport::TestCase
+        Event = OutputWorkflows::Rails::WorkflowExecution::Event
+
+        setup do
+          Event.delete_all
+          WorkflowExecution.delete_all
+          @execution = WorkflowExecution.create!(
+            workflow_id: "wf_evt",
+            workflow_run_id: "run_evt",
+            workflow_name: "context_persona_enrichment",
+            status: "pending"
+          )
+        end
+
+        test "persists an event row linked to its execution" do
+          event = @execution.execution_events.create!(
+            event_id: "evt_1",
+            action_type: "llm",
+            workflow_name: "context_persona_enrichment",
+            occurred_at: Time.current.utc
+          )
+
+          assert event.persisted?
+          assert_equal @execution, event.execution
+          assert_equal [event], @execution.execution_events.to_a
+        end
+
+        test "enforces (execution_id, event_id) uniqueness at the database level" do
+          @execution.execution_events.create!(
+            event_id: "evt_dup", action_type: "llm",
+            workflow_name: "wf", occurred_at: Time.current.utc
+          )
+
+          assert_raises ActiveRecord::RecordNotUnique do
+            @execution.execution_events.create!(
+              event_id: "evt_dup", action_type: "http",
+              workflow_name: "wf", occurred_at: Time.current.utc
+            )
+          end
+        end
+
+        test "the same event_id is allowed under a different execution" do
+          other = WorkflowExecution.create!(
+            workflow_id: "wf_other", workflow_run_id: "run_other",
+            workflow_name: "wf", status: "pending"
+          )
+          @execution.execution_events.create!(
+            event_id: "evt_shared", action_type: "llm",
+            workflow_name: "wf", occurred_at: Time.current.utc
+          )
+
+          assert_nothing_raised do
+            other.execution_events.create!(
+              event_id: "evt_shared", action_type: "llm",
+              workflow_name: "wf", occurred_at: Time.current.utc
+            )
+          end
+        end
+
+        test "action_type enum exposes scopes and predicates" do
+          %w[llm http http_cost].each do |type|
+            @execution.execution_events.create!(
+              event_id: "e_#{type}", action_type: type,
+              workflow_name: "wf", occurred_at: Time.current.utc
+            )
+          end
+
+          assert_equal %w[e_llm], Event.llm.pluck(:event_id)
+          assert_equal %w[e_http], Event.http.pluck(:event_id)
+          assert_equal %w[e_http_cost], Event.http_cost.pluck(:event_id)
+          assert_predicate Event.find_by(event_id: "e_llm"), :llm?
+        end
+
+        test "rejects an unknown action_type" do
+          event = @execution.execution_events.build(
+            event_id: "e_bad", action_type: "telepathy",
+            workflow_name: "wf", occurred_at: Time.current.utc
+          )
+          refute event.valid?
+          assert event.errors[:action_type].present?
+        end
+      end
+    end
+  end
+end

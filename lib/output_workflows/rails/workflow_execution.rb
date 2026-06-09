@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "workflow_execution/event"
 require_relative "workflow_execution/events"
 require_relative "workflow_execution/cost"
 
@@ -12,6 +13,16 @@ module OutputWorkflows
       include OutputWorkflows::Rails::WorkflowExecution::Cost
 
       belongs_to :executable, polymorphic: true, optional: true
+
+      # Per-event log rows (see WorkflowExecution::Event). Named
+      # `execution_events` rather than `events` because the legacy `events`
+      # JSONB column still exists during the transition; renamed to `events`
+      # once that column is dropped.
+      has_many :execution_events,
+               class_name: "OutputWorkflows::Rails::WorkflowExecution::Event",
+               foreign_key: :execution_id,
+               inverse_of: :execution,
+               dependent: :delete_all
 
       enum :status, %w[pending running completed failed].index_by(&:itself), prefix: true
 
