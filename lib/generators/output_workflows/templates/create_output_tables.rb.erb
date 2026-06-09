@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-class CreateOutputWorkflowExecutions < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
+class CreateOutputTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.current_version %>]
   def change
     create_table :output_workflow_executions, id: :uuid do |t|
       # Polymorphic association (optional)
