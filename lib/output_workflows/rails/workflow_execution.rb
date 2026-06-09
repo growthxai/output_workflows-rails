@@ -14,7 +14,7 @@ module OutputWorkflows
 
       belongs_to :executable, polymorphic: true, optional: true
 
-      has_many :execution_events,
+      has_many :events,
                class_name: "OutputWorkflows::Rails::WorkflowExecution::Event",
                foreign_key: :execution_id,
                inverse_of: :execution,

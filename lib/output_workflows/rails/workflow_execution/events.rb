@@ -18,7 +18,7 @@ module OutputWorkflows
           entry_cost_micro = action_type == "http" ? 0 : cost_micro
 
           transaction do
-            execution_events.create!(
+            events.create!(
               event_id: event_id,
               action_type: action_type,
               workflow_name: workflow_name,
