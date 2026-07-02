@@ -25,6 +25,26 @@ class TestClient < Minitest::Test
     assert_equal "run_xyz", dispatch.run_id
   end
 
+  def test_start_workflow_forwards_a_caller_supplied_workflow_id
+    body = { "workflowId" => "acme-x1y2z3", "runId" => "run_xyz" }
+    stub_request(:post, "http://test.local/workflow/start")
+      .with(body: hash_including("workflowId" => "acme-x1y2z3"))
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    dispatch = @client.start_workflow("my_workflow", { foo: "bar" }, workflow_id: "acme-x1y2z3")
+
+    assert_equal "acme-x1y2z3", dispatch.workflow_id
+  end
+
+  def test_start_workflow_omits_workflow_id_when_not_supplied
+    stub_request(:post, "http://test.local/workflow/start")
+      .with { |req| !JSON.parse(req.body).key?("workflowId") }
+      .to_return(status: 200, body: { "workflowId" => "wf_abc", "runId" => "run_xyz" }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_equal "wf_abc", @client.start_workflow("my_workflow", { foo: "bar" }).workflow_id
+  end
+
   def test_start_workflow_raises_when_run_id_missing
     body = { "workflowId" => "wf_abc" }
     stub_request(:post, "http://test.local/workflow/start")
