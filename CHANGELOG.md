@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+**Caller-supplied workflow id**
+
+- `Client#start_workflow` now forwards a `workflow_id:` option to `POST
+  /workflow/start` as `workflowId`. Lets a caller pass a readable, domain-scoped
+  id (e.g. `"acme-x1y2z3"`) instead of the opaque server-generated nanoid. Must
+  be unique; omitting it preserves the prior server-minted behavior.
+
 ## [0.6.1] - 2026-06-05
 
 **Tolerate un-stoppable runs on cancel**
