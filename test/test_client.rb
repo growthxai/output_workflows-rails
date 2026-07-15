@@ -45,6 +45,27 @@ class TestClient < Minitest::Test
     assert_equal "wf_abc", @client.start_workflow("my_workflow", { foo: "bar" }).workflow_id
   end
 
+  def test_start_workflow_forwards_task_queue_as_camel_case
+    body = { "workflowId" => "wf_abc", "runId" => "run_xyz" }
+    stub_request(:post, "http://test.local/workflow/start")
+      .with(body: hash_including("taskQueue" => "low"))
+      .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+    @client.start_workflow("my_workflow", { foo: "bar" }, task_queue: "low")
+
+    assert_requested :post, "http://test.local/workflow/start",
+                     body: hash_including("taskQueue" => "low")
+  end
+
+  def test_start_workflow_omits_task_queue_when_not_supplied
+    stub_request(:post, "http://test.local/workflow/start")
+      .with { |req| !JSON.parse(req.body).key?("taskQueue") }
+      .to_return(status: 200, body: { "workflowId" => "wf_abc", "runId" => "run_xyz" }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_equal "wf_abc", @client.start_workflow("my_workflow", { foo: "bar" }).workflow_id
+  end
+
   def test_start_workflow_raises_when_run_id_missing
     body = { "workflowId" => "wf_abc" }
     stub_request(:post, "http://test.local/workflow/start")
