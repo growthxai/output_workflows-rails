@@ -346,6 +346,13 @@ workflow_id =
 # => "workflow-id-12345"
 ```
 
+`start_workflow(name, input, **options)` accepts these optional keyword options:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `task_queue` | `String`/`Symbol` | server default | Temporal task queue the START lands on. Route high-load, non-user-facing workflows off the shared default onto a dedicated queue (e.g. `"low"`). A live worker must poll that queue or the run hangs unexecuted. |
+| `workflow_id` | `String` | server-generated | Caller-supplied, addressable workflow id (must be unique). Omit to let the server mint one. |
+
 ### Checking Status
 
 ```ruby
