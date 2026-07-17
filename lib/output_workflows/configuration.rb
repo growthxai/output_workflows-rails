@@ -2,9 +2,13 @@
 
 module OutputWorkflows
   class Configuration
+    # event_retention: how long the host keeps output_workflow_execution_events
+    # rows before purging them (nil = kept forever). Guards rollup recomputes:
+    # recomputing from a purged events table would zero out valid totals.
     attr_accessor :api_url, :api_key, :webhook_secret,
                   :default_timeout, :default_poll_interval,
-                  :job_queue, :table_name, :max_progress_entries
+                  :job_queue, :table_name, :max_progress_entries,
+                  :event_retention
 
     def initialize
       @api_url = ENV["OUTPUT_API_URL"] || ENV["FLOW_API_BASE_URL"] || default_api_url

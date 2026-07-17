@@ -48,6 +48,7 @@ ActiveRecord::Schema.define do
     t.integer :total_output_tokens,        null: false, default: 0
     t.integer :total_cached_input_tokens,  null: false, default: 0
     t.integer :total_reasoning_tokens,     null: false, default: 0
+    t.datetime :rollups_computed_at
     t.timestamps
   end
 

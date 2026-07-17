@@ -13,30 +13,27 @@ module OutputWorkflows
           return false if event_id.blank? || action.blank?
 
           action_type = action.sub("workflow_event.", "")
-          cost_micro  = (payload.dig(:cost, :total).to_f * 1_000_000).round
-          usage       = payload[:usage] || {}
-          entry_cost_micro = action_type == "http" ? 0 : cost_micro
+          # http events count calls, not spend: their cost arrives separately as
+          # http_cost events, so recording it here too would double-count.
+          cost_micro = action_type == "http" ? 0 : (payload.dig(:cost, :total).to_f * 1_000_000).round
+          usage      = payload[:usage] || {}
 
-          transaction do
-            events.create!(
-              event_id: event_id,
-              action_type: action_type,
-              workflow_name: workflow_name,
-              provider: payload[:provider],
-              model_id: payload[:modelId],
-              url: payload[:url],
-              cost_micro_usd: entry_cost_micro,
-              input_tokens: usage[:inputTokens].to_i,
-              output_tokens: usage[:outputTokens].to_i,
-              cached_input_tokens: usage[:cachedInputTokens].to_i,
-              reasoning_tokens: usage[:reasoningTokens].to_i,
-              total_tokens: usage[:totalTokens].to_i,
-              duration_ms: payload[:durationMs],
-              occurred_at: Time.current.utc
-            )
-
-            apply_rollups_for(action_type, cost_micro: cost_micro, usage: usage)
-          end
+          events.create!(
+            event_id: event_id,
+            action_type: action_type,
+            workflow_name: workflow_name,
+            provider: payload[:provider],
+            model_id: payload[:modelId],
+            url: payload[:url],
+            cost_micro_usd: cost_micro,
+            input_tokens: usage[:inputTokens].to_i,
+            output_tokens: usage[:outputTokens].to_i,
+            cached_input_tokens: usage[:cachedInputTokens].to_i,
+            reasoning_tokens: usage[:reasoningTokens].to_i,
+            total_tokens: usage[:totalTokens].to_i,
+            duration_ms: payload[:durationMs],
+            occurred_at: Time.current.utc
+          )
           true
         rescue ActiveRecord::RecordNotUnique
           false
