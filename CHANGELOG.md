@@ -1,4 +1,32 @@
-## [Unreleased]
+## [0.8.0] - 2026-07-17
+
+**Terminal cost rollups (kills the per-event hot-row UPDATE)**
+
+- **BREAKING**: `append_event` no longer increments the `total_*` rollup
+  columns per event. A high-fan-out run (~100K HTTP calls) serialized every
+  worker on the execution row's lock and convoyed the whole database
+  (growthxai/atlas 2026-07-09 / 07-14 incidents). Event appends are now pure
+  INSERTs — no write to `output_workflow_executions` at all.
+- Rollups are recomputed as one absolute grouped aggregate over the events
+  table at terminal transitions (`after_update` on status → completed/failed),
+  stamping a new `rollups_computed_at` watermark column. **Hosts must add the
+  column** (`rollups_computed_at :datetime`, nullable). Recomputing is
+  idempotent and self-healing — call `recompute_rollups` again to fold in late
+  events. The watermark is a coverage guarantee (stamped pre-aggregate, minus
+  `Cost::COVERAGE_MARGIN`): events at or before it are certainly counted. The
+  new `rollups_stale` scope selects rows whose rollups may be missing events
+  (NULL watermark, or an event past the coverage guarantee) — sweep it,
+  bounded by your retention window, to reconcile post-terminal stragglers.
+- **BREAKING**: hosts that transition status via `update_all` (no AR
+  callbacks) must call `recompute_rollups` explicitly after a terminal
+  transition.
+- `cost_payload` derives rollups live from the events table for active
+  executions (fresh mid-run cost without any hot-row write) and reads the
+  persisted columns for terminal ones.
+- New config `event_retention` (duration, default nil = events kept forever):
+  hosts that purge old event rows must set it — `recompute_rollups` no-ops on
+  executions older than the retention so a recompute can never zero out valid
+  totals from a purged events table.
 
 **Caller-supplied workflow id**
 
