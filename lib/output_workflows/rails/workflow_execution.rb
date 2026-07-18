@@ -185,7 +185,12 @@ module OutputWorkflows
 
       def serializable_hash(options = nil)
         hash = super
-        hash["cost"] = cost_payload if cost_payload
+        # Single call: cost_payload runs a live events aggregate for active
+        # executions, so calling it in both the guard and the assignment would
+        # double the query.
+        if (cost = cost_payload)
+          hash["cost"] = cost
+        end
         hash
       end
 

@@ -39,6 +39,10 @@ class CreateOutputTables < ActiveRecord::Migration[<%= ActiveRecord::Migration.c
       t.integer :total_cached_input_tokens,  default: 0,  null: false
       t.integer :total_reasoning_tokens,     default: 0,  null: false
 
+      # When the rollup columns were last recomputed from the events table.
+      # NULL = never recomputed; an event row newer than this means stale totals.
+      t.datetime :rollups_computed_at
+
       t.timestamps
     end
 
