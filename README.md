@@ -56,9 +56,9 @@ Your application's `output_workflow_executions` table must include the following
 | `total_llm_cost_micro_usd` | `bigint` | `0` | no | LLM-only cost rollup, in micro-USD (`workflow_event.llm`). Recomputed at terminal transitions. |
 | `total_http_cost_micro_usd` | `bigint` | `0` | no | HTTP-only cost rollup, in micro-USD (`workflow_event.http_cost`). Recomputed at terminal transitions. |
 | `rollups_computed_at` | `datetime` | nil | yes | Coverage watermark: events created at or before this instant are certainly folded into the rollups. NULL = never recomputed; the `rollups_stale` scope selects rows with uncovered events. |
-| `events` | `jsonb` | `[]` | no | Per-event log. Each entry carries `event_id`, `action_type`, `workflow_name`, `provider`, `model_id`, `url`, `cost_micro_usd`, token counts, `duration_ms`, and `occurred_at`. Appended by `append_event`; also used for in-memory event-id dedup. |
+Per-event data lives in a separate `output_workflow_execution_events` table (not a jsonb column). Each row carries `event_id`, `action_type` (`llm`, `http`, `http_cost`), `workflow_name`, `provider`, `model_id`, `url`, `cost_micro_usd`, token counts, `duration_ms`, and `occurred_at`. Rows are appended by `WorkflowExecution#append_event` and deduped by a unique `(execution_id, event_id)` index. The starter migration creates this table too.
 
-The starter migration produced by `rails generate output_workflows:install` includes all of these columns. If you already have an `output_workflow_executions` table from an earlier version of this gem, add the cost-rollup columns with a follow-up migration:
+The starter migration produced by `rails generate output_workflows:install` includes all of these columns. If you already have an `output_workflow_executions` table from an earlier version of this gem, add the cost-rollup columns and the events table with a follow-up migration:
 
 ```ruby
 class AddCostRollupToOutputWorkflowExecutions < ActiveRecord::Migration[8.0]
@@ -73,6 +73,32 @@ class AddCostRollupToOutputWorkflowExecutions < ActiveRecord::Migration[8.0]
     add_column :output_workflow_executions, :total_llm_cost_micro_usd,   :bigint,  default: 0,  null: false
     add_column :output_workflow_executions, :total_http_cost_micro_usd,  :bigint,  default: 0,  null: false
     add_column :output_workflow_executions, :rollups_computed_at,        :datetime
+
+    create_table :output_workflow_execution_events, id: :uuid do |t|
+      t.references :execution, type: :uuid, null: false,
+                   foreign_key: { to_table: :output_workflow_executions, on_delete: :cascade }
+
+      t.string  :event_id,      null: false
+      t.string  :action_type,   null: false
+      t.string  :workflow_name, null: false
+      t.string  :provider
+      t.string  :model_id
+      t.string  :url
+
+      t.bigint  :cost_micro_usd,      default: 0, null: false
+      t.integer :input_tokens,        default: 0, null: false
+      t.integer :output_tokens,       default: 0, null: false
+      t.integer :cached_input_tokens, default: 0, null: false
+      t.integer :reasoning_tokens,    default: 0, null: false
+      t.bigint  :total_tokens,        default: 0, null: false
+
+      t.integer  :duration_ms
+      t.datetime :occurred_at, null: false
+
+      t.timestamps
+    end
+
+    add_index :output_workflow_execution_events, %i[execution_id event_id], unique: true
   end
 end
 ```
