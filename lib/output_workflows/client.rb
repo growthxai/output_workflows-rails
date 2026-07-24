@@ -134,30 +134,25 @@ module OutputWorkflows
         run_id ? "workflow #{workflow_id} run #{run_id}" : "workflow #{workflow_id}"
       end
 
+      # Envelope keys are camelCased explicitly; `input` is the caller's payload
+      # and must reach the API byte-for-byte — workflows validate it against
+      # schemas whose key casing is part of the contract (e.g. a snake_case
+      # profile round-tripped from a workflow's own output).
       def build_workflow_params(workflow_name, input, **options)
         params = {
-          workflow_name: workflow_name,
-          input: input
+          "workflowName" => workflow_name,
+          "input" => input
         }
 
         # Add task_queue if explicitly provided
-        params[:task_queue] = options[:task_queue] if options[:task_queue]
+        params["taskQueue"] = options[:task_queue] if options[:task_queue]
 
         # A caller-supplied workflow id makes the run addressable by a readable,
         # domain-scoped id instead of an opaque server-generated nanoid. Must be
         # unique per the API contract; the server mints one when omitted.
-        params[:workflow_id] = options[:workflow_id] if options[:workflow_id]
+        params["workflowId"] = options[:workflow_id] if options[:workflow_id]
 
-        # Convert keys to camelCase for API
-        deep_transform_keys_to_camel_case(params)
-      end
-
-      def deep_transform_keys_to_camel_case(hash)
-        hash.each_with_object({}) do |(key, value), result|
-          new_key = key.to_s.gsub(/_([a-z])/) { Regexp.last_match(1).upcase }
-          new_value = value.is_a?(Hash) ? deep_transform_keys_to_camel_case(value) : value
-          result[new_key] = new_value
-        end
+        params
       end
 
       def handle_faraday_error(action, error)

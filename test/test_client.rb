@@ -66,6 +66,27 @@ class TestClient < Minitest::Test
     assert_equal "wf_abc", @client.start_workflow("my_workflow", { foo: "bar" }).workflow_id
   end
 
+  def test_start_workflow_passes_input_through_verbatim
+    input = {
+      identifier: "gid://app/Record/1",
+      currentProfile: {
+        "style_anchors" => ["be direct"],
+        "voice" => { "anti_patterns" => "none" },
+        "_description" => { "summary" => "s" }
+      }
+    }
+    stub_request(:post, "http://test.local/workflow/start")
+      .to_return(status: 200, body: { "workflowId" => "wf_abc", "runId" => "run_xyz" }.to_json,
+                 headers: { "Content-Type" => "application/json" })
+
+    @client.start_workflow("my_workflow", input)
+
+    assert_requested(:post, "http://test.local/workflow/start") do |req|
+      profile = JSON.parse(req.body).fetch("input").fetch("currentProfile")
+      profile.key?("style_anchors") && profile["voice"].key?("anti_patterns") && profile.key?("_description")
+    end
+  end
+
   def test_start_workflow_raises_when_run_id_missing
     body = { "workflowId" => "wf_abc" }
     stub_request(:post, "http://test.local/workflow/start")
