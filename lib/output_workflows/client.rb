@@ -135,7 +135,7 @@ module OutputWorkflows
       end
 
       # Envelope keys are camelCased explicitly; `input` is the caller's payload
-      # and must reach the API byte-for-byte — workflows validate it against
+      # and must reach the API with its key casing preserved — workflows validate it against
       # schemas whose key casing is part of the contract (e.g. a snake_case
       # profile round-tripped from a workflow's own output).
       def build_workflow_params(workflow_name, input, **options)

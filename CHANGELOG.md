@@ -1,3 +1,18 @@
+## [0.8.1] - 2026-07-24
+
+**Client no longer camelizes workflow input**
+
+- `Client#start_workflow` used to deep-camelize every key of the request —
+  including the caller's `input` payload — corrupting snake_case input keys
+  (`style_anchors` → `styleAnchors`, `_description` → `Description`) before
+  they reached workflow input validation. Envelope keys (`workflowName`,
+  `taskQueue`, `workflowId`) are now written camelCase explicitly and `input`
+  passes through with its key casing preserved.
+- The gem no longer normalizes input keys: a caller passing snake_case
+  top-level input keys and relying on the client to camelize them must now
+  hand-write camelCase. Every known consumer already does (verified across
+  atlas, checkthat, atlas-classic).
+
 ## [0.8.0] - 2026-07-17
 
 **Terminal cost rollups (kills the per-event hot-row UPDATE)**
