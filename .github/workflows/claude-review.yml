@@ -1,0 +1,43 @@
+# Thin shim — the reviewer lives in growthxai/ci-reviews. This repo runs the
+# SDK engine (review-sdk.yml): deterministic phased pipeline, badge verdicts,
+# cost in the comment, metrics artifact per run. Rollback = point uses: back at
+# review.yml@v2.
+# NOTE: no comment triggers — the SDK engine has no @claude-review re-review
+# path yet; re-reviews happen on push, or on-demand via workflow_dispatch.
+name: Claude Review
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (overrides event PR)'
+        required: true
+        type: string
+
+jobs:
+  review:
+    # Skip Dependabot PRs: their runs use the Dependabot secret store (no
+    # ANTHROPIC_API_KEY) and claude-code-action refuses bot actors, so the job
+    # fails fast. Nothing to review on a lockfile bump.
+    if: github.actor != 'dependabot[bot]'
+    uses: growthxai/ci-reviews/.github/workflows/review-sdk.yml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    with:
+      primary_sources: |
+        1. `README.md` — public API, Rails setup, required schema, execution modes (sync/async/webhook)
+        2. `CHANGELOG.md` — versioning and release conventions
+      extra_instructions: |
+        This is a Ruby gem (Rails SDK for Output.ai), tested with Minitest under `test/`.
+        The public surface is `lib/output_workflows/` — client, webhook_verifier, and the Rails
+        integration (`lib/output_workflows/rails/`: executable, workflow_execution, webhook_processor,
+        status_check_job). Behavior changes there are breaking for consuming Rails apps: check
+        `version.rb` + `CHANGELOG.md` are updated coherently (semver), and that `README.md` still
+        matches any changed public API or generator output (`lib/generators/`).
+        Open the code, don't infer: webhook payload handling must cover failure statuses, not just
+        the happy path.
