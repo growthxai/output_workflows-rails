@@ -32,6 +32,10 @@ module OutputWorkflows
             reasoning_tokens: usage[:reasoningTokens].to_i,
             total_tokens: usage[:totalTokens].to_i,
             duration_ms: payload[:durationMs],
+            pricing_status: payload[:costStatus],
+            pricing_freshness: payload[:pricingFreshness],
+            pricing_source: payload[:pricingSource],
+            activity_id: payload[:activityId],
             occurred_at: Time.current.utc
           )
           true

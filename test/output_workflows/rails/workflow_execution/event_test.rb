@@ -65,6 +65,38 @@ module OutputWorkflows
           end
         end
 
+        test "append_event stores the pricing columns and activity id the payload carries" do
+          @execution.append_event(
+            "eventId" => "evt_priced",
+            "action" => "workflow_event.llm",
+            "cost" => { "total" => 0.01 },
+            "costStatus" => "imprecise",
+            "pricingFreshness" => "snapshot",
+            "pricingSource" => "models.dev",
+            "activityId" => "abc"
+          )
+
+          event = @execution.events.find_by!(event_id: "evt_priced")
+          assert_equal "imprecise", event.pricing_status
+          assert_equal "snapshot", event.pricing_freshness
+          assert_equal "models.dev", event.pricing_source
+          assert_equal "abc", event.activity_id
+        end
+
+        test "append_event leaves the pricing columns nil when the payload omits them" do
+          @execution.append_event(
+            "eventId" => "evt_unpriced",
+            "action" => "workflow_event.llm",
+            "cost" => { "total" => 0.01 }
+          )
+
+          event = @execution.events.find_by!(event_id: "evt_unpriced")
+          assert_nil event.pricing_status
+          assert_nil event.pricing_freshness
+          assert_nil event.pricing_source
+          assert_nil event.activity_id
+        end
+
         test "rejects an unknown action_type" do
           event = @execution.events.build(
             event_id: "e_bad", action_type: "telepathy",

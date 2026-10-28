@@ -1,3 +1,15 @@
+## [Unreleased]
+
+**Pricing confidence and activity id on event rows**
+
+- `append_event` stores four more columns, each read from the payload's
+  camelCase key: `pricing_status` (`costStatus`), `pricing_freshness`
+  (`pricingFreshness`), `pricing_source` (`pricingSource`) and `activity_id`
+  (`activityId`). A key the payload omits leaves its column nil, so older
+  producers keep working; nothing defaults the status to `"precise"`. **Hosts
+  must add the columns** to `output_workflow_execution_events` (four nullable
+  strings) before upgrading.
+
 ## [0.8.0] - 2026-07-17
 
 **Terminal cost rollups (kills the per-event hot-row UPDATE)**
