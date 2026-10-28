@@ -67,6 +67,10 @@ ActiveRecord::Schema.define do
     t.integer :reasoning_tokens,    null: false, default: 0
     t.bigint  :total_tokens,        null: false, default: 0
     t.integer :duration_ms
+    t.string  :pricing_status
+    t.string  :pricing_freshness
+    t.string  :pricing_source
+    t.string  :activity_id
     t.datetime :occurred_at, null: false
     t.timestamps
     t.index %i[execution_id event_id], unique: true
